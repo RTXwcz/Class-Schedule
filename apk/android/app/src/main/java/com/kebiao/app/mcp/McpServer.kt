@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import java.net.InetAddress
 import java.net.ServerSocket
 
@@ -34,7 +36,8 @@ class McpServer(
         server = null
     }
 
-    private fun handleConnection(socket: java.net.Socket) {
+    private suspend fun handleConnection(socket: java.net.Socket) {
+        if (!socket.inetAddress.isLoopbackAddress && !socket.inetAddress.isSiteLocalAddress) return
         val input = socket.getInputStream().bufferedReader()
         val headers = mutableMapOf<String, String>()
         while (true) {
@@ -45,7 +48,16 @@ class McpServer(
         val length = headers["content-length"]?.toIntOrNull()?.coerceIn(0, 64 * 1024) ?: 0
         val body = CharArray(length)
         input.read(body)
-        val response = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"Use app tool adapter\"}}"
+        val request = runCatching { Json.parseToJsonElement(body.concatToString()).jsonObject }.getOrNull()
+        val tool = request?.get("method")?.toString()?.trim('"')
+        val params = request?.get("params")?.jsonObject?.mapValues { it.value.toString().trim('"') }.orEmpty()
+        val token = headers["authorization"]?.removePrefix("Bearer ")?.trim()
+        val result = if (tool == null) McpResult(false, "invalid_request") else registry.dispatch(tool, params, token)
+        val response = if (result.success) {
+            "{\"jsonrpc\":\"2.0\",\"result\":{\"ok\":true}}"
+        } else {
+            "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"${result.errorCode ?: "error"}\"}}"
+        }
         val bytes = response.toByteArray()
         socket.getOutputStream().bufferedWriter().use { output ->
             output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n")
