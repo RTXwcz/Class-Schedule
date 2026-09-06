@@ -3,30 +3,20 @@ package com.kebiao.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.room.Room
+import com.kebiao.app.data.ScheduleRepository
+import com.kebiao.app.data.local.AppDatabase
+import com.kebiao.app.data.settings.AppSettingsStore
+import com.kebiao.app.ui.AppViewModel
+import com.kebiao.app.ui.ScheduleApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val database = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "schedule.db").build()
+        val viewModel = AppViewModel(ScheduleRepository(database), AppSettingsStore(applicationContext))
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Text(text = "我的课表")
-                    }
-                }
-            }
+            ScheduleApp(viewModel)
         }
     }
 }

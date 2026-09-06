@@ -17,6 +17,29 @@ class ScheduleRepository(private val database: AppDatabase) {
         entities.mapNotNull { entity -> entity.toDomainOrNull() }
     }
 
+    fun observeExams(): Flow<List<ScheduleExam>> = dao.observeExams().map { entities ->
+        entities.map { entity ->
+            ScheduleExam(
+                id = entity.id,
+                subject = entity.subject,
+                date = entity.date,
+                time = entity.time,
+                building = entity.building,
+                room = entity.room,
+                locationNote = entity.locationNote,
+                source = entity.source,
+                createdAtEpochMillis = entity.createdAtEpochMillis,
+                updatedAtEpochMillis = entity.updatedAtEpochMillis,
+            )
+        }
+    }
+
+    fun observeOverrides(): Flow<List<ScheduleOverrideRecord>> = dao.observeOverrides().map { entities ->
+        entities.map { entity ->
+            ScheduleOverrideRecord(entity.date, entity.replacementWeekday, entity.note)
+        }
+    }
+
     suspend fun replaceAll(export: ScheduleExport) {
         database.withTransaction {
             dao.deleteAllCourses()
