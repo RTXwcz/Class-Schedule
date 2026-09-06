@@ -21,10 +21,12 @@ class ScheduleResolver {
             ?.replacementWeekday
             ?: naturalWeekday
 
-        val weekParity = semesterStart?.let { start ->
-            val weekIndex = ChronoUnit.WEEKS.between(start, date)
-            if (Math.floorMod(weekIndex, 2L) == 0L) WeekRule.ODD else WeekRule.EVEN
-        }
+        val weekParity = semesterStart
+            ?.takeUnless { date.isBefore(it) }
+            ?.let { start ->
+                val weekIndex = ChronoUnit.WEEKS.between(start, date)
+                if (Math.floorMod(weekIndex, 2L) == 0L) WeekRule.ODD else WeekRule.EVEN
+            }
 
         val sorted = courses
             .asSequence()

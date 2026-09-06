@@ -48,6 +48,24 @@ class ScheduleResolverTest {
     }
 
     @Test
+    fun ignoresOddAndEvenCoursesBeforeSemesterStart() {
+        val courses = listOf(
+            Course("odd", "Odd week", 1, 1, 1, WeekRule.ODD),
+            Course("even", "Even week", 1, 2, 2, WeekRule.EVEN),
+            Course("all", "Every week", 1, 3, 3, WeekRule.ALL),
+        )
+
+        val result = resolver.resolve(
+            date = monday,
+            semesterStart = monday.plusWeeks(1),
+            courses = courses,
+            overrides = emptyList(),
+        )
+
+        assertEquals(listOf("all"), result.map { it.course.id })
+    }
+
+    @Test
     fun usesReplacementWeekdayForFullDayOverride() {
         val courses = listOf(
             Course("monday", "周一课", 1, 1, 1, WeekRule.ALL),
