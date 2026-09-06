@@ -8,14 +8,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.room.Room
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import com.kebiao.app.data.ScheduleRepository
 import com.kebiao.app.data.local.AppDatabase
 import com.kebiao.app.data.settings.AppSettingsStore
 import com.kebiao.app.notifications.ReminderCoordinator
+import com.kebiao.app.mcp.McpAuthStore
+import com.kebiao.app.mcp.McpServer
+import com.kebiao.app.mcp.McpToolRegistry
+import com.kebiao.app.mcp.RepositoryScheduleStore
 import com.kebiao.app.ui.AppViewModel
 import com.kebiao.app.ui.ScheduleApp
 
 class MainActivity : ComponentActivity() {
+    private var mcpServer: McpServer? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -28,9 +37,23 @@ class MainActivity : ComponentActivity() {
         val settingsStore = AppSettingsStore(applicationContext)
         val viewModel = AppViewModel(repository, settingsStore)
         ReminderCoordinator(applicationContext, repository, settingsStore).start(lifecycleScope)
+        val mcp = McpServer(applicationContext, McpToolRegistry(RepositoryScheduleStore(repository), McpAuthStore(applicationContext), writeConfirmation = true))
+        mcpServer = mcp
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                settingsStore.settings.collectLatest { settings ->
+                    if (settings.mcpEnabled) mcp.start(lifecycleScope) else mcp.stop()
+                }
+            }
+        }
         setContent {
             ScheduleApp(viewModel)
         }
+    }
+
+    override fun onDestroy() {
+        mcpServer?.stop()
+        super.onDestroy()
     }
 
     companion object {
