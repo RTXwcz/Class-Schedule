@@ -65,6 +65,22 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("智能导入与 Agent")
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("允许下载本地 OCR 模型")
+                        Switch(checked = state.settings.useLocalOcr, onCheckedChange = { value -> viewModel.updateSettings { it.copy(useLocalOcr = value) } })
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("启用局域网 MCP")
+                        Switch(checked = state.settings.mcpEnabled, onCheckedChange = { value -> viewModel.updateSettings { it.copy(mcpEnabled = value) } })
+                    }
+                    Text("MCP 默认使用端口 ${state.settings.mcpPort}，启用后需使用配对 Token。")
+                }
+            }
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("课程提醒")
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("启用通知")
