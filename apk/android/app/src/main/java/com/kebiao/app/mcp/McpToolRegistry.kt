@@ -22,6 +22,15 @@ class McpToolRegistry(
     private val tokenStore: McpTokenStore,
     private val writeConfirmation: Boolean,
 ) {
+    suspend fun dispatch(tool: String, params: Map<String, String>, token: String?): McpResult {
+        if (tool == "schedule.list") {
+            if (!tokenStore.isValid(token.orEmpty())) return McpResult(false, "unauthorized")
+            val snapshot = store.snapshot()
+            return McpResult(true, data = mapOf("courseCount" to snapshot.courses.size, "examCount" to snapshot.exams.size, "overrideCount" to snapshot.overrides.size))
+        }
+        return handleWrite(tool, params, token.orEmpty())
+    }
+
     fun handle(tool: String, params: Map<String, String>, token: String? = null): McpResult {
         if (writeConfirmation && tool != "schedule.list" && params["confirmed"] != "true") {
             return McpResult(false, "confirmation_required")
