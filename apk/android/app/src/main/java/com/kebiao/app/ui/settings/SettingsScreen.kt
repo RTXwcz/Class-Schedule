@@ -18,6 +18,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,7 +31,7 @@ import java.time.LocalDate
 
 @Composable
 fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues()) {
-    val state = viewModel.uiState.value
+    val state by viewModel.uiState.collectAsState()
     var semesterDate by remember(state.settings.semesterStartDate) { mutableStateOf(state.settings.semesterStartDate.orEmpty()) }
     var showOverrideEditor by remember { mutableStateOf(false) }
     LazyColumn(

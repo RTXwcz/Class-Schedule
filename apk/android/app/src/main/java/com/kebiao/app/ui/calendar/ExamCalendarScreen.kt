@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,7 +30,8 @@ import com.kebiao.app.ui.AppViewModel
 
 @Composable
 fun ExamCalendarScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues()) {
-    val exams = viewModel.uiState.value.exams.sortedWith(compareBy<ScheduleExam> { it.date }.thenBy { it.time.orEmpty() })
+    val state by viewModel.uiState.collectAsState()
+    val exams = state.exams.sortedWith(compareBy<ScheduleExam> { it.date }.thenBy { it.time.orEmpty() })
     var editing by remember { mutableStateOf<ScheduleExam?>(null) }
     var showEditor by remember { mutableStateOf(false) }
 

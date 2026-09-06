@@ -27,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,7 +43,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues()) {
-    val state = viewModel.uiState.value
+    val state by viewModel.uiState.collectAsState()
     var editorCourse by remember { mutableStateOf<Course?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     val selectedMonday = state.selectedDate.with(DayOfWeek.MONDAY)

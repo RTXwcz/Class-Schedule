@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +24,7 @@ import com.kebiao.app.ui.AppViewModel
 
 @Composable
 fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues()) {
+    val state by viewModel.uiState.collectAsState()
     var json by remember { mutableStateOf(viewModel.exportJson()) }
     var status by remember { mutableStateOf<String?>(null) }
     Column(
@@ -42,7 +44,7 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
         Button(onClick = { status = if (viewModel.importJson(json)) "导入成功" else "导入失败" }) { Text("导入 JSON") }
         TextButton(onClick = { json = ""; status = null }) { Text("清空编辑框") }
         status?.let { Text(it) }
-        viewModel.uiState.value.errorMessage?.let {
+        state.errorMessage?.let {
             Text(it)
             TextButton(onClick = viewModel::clearError) { Text("关闭错误") }
         }
