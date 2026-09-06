@@ -2,7 +2,7 @@
 
 本目录 `apk/` 是一个完整的 Capacitor 8 安卓工程，网页代码已打包进 `www/` 并同步到 `android/`。只需在装有 Android 开发环境的电脑上执行一次构建即可得到 `.apk`。
 
-> 环境要求：**JDK 17 或 21** + **Android SDK（Platform 36）**。最省事的是直接装 **Android Studio（最新版）**，它自带 JDK 和 SDK。
+> 环境要求：**JDK 21** + **Android SDK（Platform 36）**。Capacitor 8 的 Android 模块使用 Java 21 编译目标。
 
 ## 方式一：Android Studio（推荐，最简单）
 
@@ -24,6 +24,14 @@ sdkmanager --licenses     # 一路输入 y 同意
 # 3. 构建（Windows 用 gradlew.bat，macOS/Linux 用 ./gradlew）
 cd apk/android
 gradlew.bat assembleDebug
+```
+
+如果项目路径包含中文字符，Gradle 单元测试在部分 Windows/JDK 组合下可能出现测试类加载失败。可使用 ASCII junction 指向项目目录后运行测试，源码和 APK 输出仍来自同一工作区：
+
+```powershell
+New-Item -ItemType Junction -Path D:\kebiao-build -Target D:\课表
+cd D:\kebiao-build\apk\android
+gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --console=plain
 ```
 
 产物同样在 `apk/android/app/build/outputs/apk/debug/app-debug.apk`。
