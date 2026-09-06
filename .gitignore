@@ -10,6 +10,7 @@ apk/android/.idea/
 # Local machine configuration
 apk/android/local.properties
 gradle/
+.gradle/
 
 # Generated installers
 *.apk

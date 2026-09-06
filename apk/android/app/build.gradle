@@ -64,8 +64,6 @@ dependencies {
     implementation "androidx.room:room-ktx:2.7.2"
     kapt "androidx.room:room-compiler:2.7.2"
     implementation "androidx.datastore:datastore-preferences:1.1.7"
-    implementation "androidx.glance:glance-appwidget:$glanceVersion"
-    implementation "androidx.glance:glance-material3:$glanceVersion"
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1"
     debugImplementation 'androidx.compose.ui:ui-tooling'
     coreLibraryDesugaring libs.android.tools.desugar

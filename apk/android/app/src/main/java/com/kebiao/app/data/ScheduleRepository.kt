@@ -51,6 +51,17 @@ class ScheduleRepository(private val database: AppDatabase) {
         }
     }
 
+    suspend fun snapshot(): ScheduleExport = ScheduleExport(
+        source = "NATIVE",
+        courses = dao.getCourses().map { entity ->
+            ScheduleCourse(entity.id, entity.name, entity.weekday, entity.startPeriod, entity.endPeriod, entity.weekRule, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis)
+        },
+        exams = dao.getExams().map { entity ->
+            ScheduleExam(entity.id, entity.subject, entity.date, entity.time, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis)
+        },
+        overrides = dao.getOverrides().map { entity -> ScheduleOverrideRecord(entity.date, entity.replacementWeekday, entity.note) },
+    )
+
     private fun ScheduleCourse.toEntity(export: ScheduleExport) = CourseEntity(
         id = id,
         name = name,
