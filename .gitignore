@@ -1,0 +1,23 @@
+# Node / Capacitor dependencies
+apk/node_modules/
+
+# Android / Gradle generated files
+apk/android/.gradle/
+apk/android/build/
+apk/android/app/build/
+apk/android/.idea/
+
+# Local machine configuration
+apk/android/local.properties
+
+# Generated installers
+*.apk
+*.aab
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local Codex / Claude settings
+.claude/

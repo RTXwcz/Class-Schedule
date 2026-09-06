@@ -1,0 +1,8 @@
+{
+  "appId": "com.kebiao.app",
+  "appName": "我的课表",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

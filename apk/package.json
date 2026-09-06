@@ -1,0 +1,18 @@
+{
+  "name": "kebiao-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "我的课表 · 原生安卓应用（Capacitor）",
+  "scripts": {
+    "sync": "cap sync android",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
+  }
+}
