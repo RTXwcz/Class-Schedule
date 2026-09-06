@@ -37,6 +37,6 @@
 ## 尚未完成的外部验证
 
 - 尚未在真实 Android 设备上验证通知、Widget、精确闹钟和厂商后台限制。
-- PaddleOCR ONNX 推理引擎仍需接入真实模型包；当前已完成模型管理和坐标/字段解析接口。
-- OpenAI 图片请求的网络传输和响应解析仍需接入用户确认流程；API Key 加密存储已完成。
-- MCP 需要用真实 Agent 客户端做一次局域网 HTTP JSON-RPC 互操作测试。
+- PaddleOCR ONNX 推理引擎仍需接入真实模型包；当前已完成模型管理和坐标/字段解析接口，并提供 ML Kit 中文离线回退引擎。
+- OpenAI 图片请求、JSON 响应解析和 API Key Keystore 存储已完成；仍需真实 Key/图片做端到端验证。
+- MCP 已连接应用设置并提供局域网 HTTP JSON-RPC 分发；仍需用真实 Agent 客户端做一次互操作测试。
