@@ -170,17 +170,23 @@ private fun CourseEditorDialog(
     var building by remember(initial) { mutableStateOf(initial?.building.orEmpty()) }
     var room by remember(initial) { mutableStateOf(initial?.room.orEmpty()) }
     var note by remember(initial) { mutableStateOf(initial?.locationNote.orEmpty()) }
+    var teacher by remember(initial) { mutableStateOf(initial?.teacher.orEmpty()) }
+    var weeks by remember(initial) { mutableStateOf(com.kebiao.app.domain.WeekSelection.format(initial?.weeks.orEmpty())) }
+    var courseNote by remember(initial) { mutableStateOf(initial?.courseNote.orEmpty()) }
     var weekRule by remember(initial) { mutableStateOf(initial?.weekRule ?: WeekRule.ALL) }
     var menuExpanded by remember { mutableStateOf(false) }
-    val parsedWeekday = weekday.toIntOrNull()?.coerceIn(1, 7) ?: 1
-    val parsedStart = start.toIntOrNull()?.coerceIn(1, 12) ?: 1
-    val parsedEnd = end.toIntOrNull()?.coerceIn(parsedStart, 12) ?: parsedStart
+    val parsedWeekday = weekday.toIntOrNull()
+    val parsedStart = start.toIntOrNull()
+    val parsedEnd = end.toIntOrNull()
+    val parsedWeeks = runCatching { com.kebiao.app.domain.WeekSelection.parse(weeks) }
+    val valid = name.isNotBlank() && parsedWeekday in 1..7 && parsedStart in 1..12 && parsedEnd in 1..12 &&
+        parsedStart != null && parsedEnd != null && parsedStart <= parsedEnd && parsedWeeks.isSuccess
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "添加课程" else "编辑课程") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("课程名称") }, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(weekday, { weekday = it.filter(Char::isDigit) }, label = { Text("星期 1-7") }, modifier = Modifier.weight(1f))
@@ -190,6 +196,10 @@ private fun CourseEditorDialog(
                 OutlinedTextField(building, { building = it }, label = { Text("教学楼") }, singleLine = true)
                 OutlinedTextField(room, { room = it }, label = { Text("教室") }, singleLine = true)
                 OutlinedTextField(note, { note = it }, label = { Text("地点备注") }, singleLine = true)
+                OutlinedTextField(teacher, { teacher = it }, label = { Text("教师") }, singleLine = true)
+                OutlinedTextField(weeks, { weeks = it }, label = { Text("周次（空为全部，如 1-16）") },
+                    isError = parsedWeeks.isFailure, supportingText = { parsedWeeks.exceptionOrNull()?.message?.let { Text(it) } })
+                OutlinedTextField(courseNote, { courseNote = it }, label = { Text("课程备注") })
                 ExposedDropdownMenuBox(expanded = menuExpanded, onExpandedChange = { menuExpanded = !menuExpanded }) {
                     OutlinedTextField(
                         value = weekRuleLabel(weekRule),
@@ -208,14 +218,14 @@ private fun CourseEditorDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
-                if (name.isNotBlank()) onSave(
+            Button(enabled = valid, onClick = {
+                if (valid) onSave(
                     Course(
                         id = initial?.id ?: AppViewModel.newCourseId(),
                         name = name.trim(),
-                        weekday = parsedWeekday,
-                        startPeriod = parsedStart,
-                        endPeriod = parsedEnd,
+                        weekday = requireNotNull(parsedWeekday),
+                        startPeriod = requireNotNull(parsedStart),
+                        endPeriod = requireNotNull(parsedEnd),
                         weekRule = weekRule,
                         building = building.trim().ifBlank { null },
                         room = room.trim().ifBlank { null },
@@ -223,6 +233,8 @@ private fun CourseEditorDialog(
                         source = initial?.source ?: "MANUAL",
                         createdAtEpochMillis = initial?.createdAtEpochMillis ?: System.currentTimeMillis(),
                         updatedAtEpochMillis = System.currentTimeMillis(),
+                        teacher = teacher.trim().ifBlank { null }, weeks = parsedWeeks.getOrThrow(),
+                        courseNote = courseNote.trim().ifBlank { null },
                     ),
                 )
             }) { Text("保存") }

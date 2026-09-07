@@ -89,9 +89,18 @@ fun ImportReviewScreen(
                     ReviewField("教室", draft.room, saving,
                         { update(index) { copy(room = room.copy(value = it, confirmed = false)) } },
                         { update(index) { copy(room = room.copy(confirmed = it)) } })
-                    ReviewField("备注", draft.locationNote, saving,
+                    ReviewField("地点备注", draft.locationNote, saving,
                         { update(index) { copy(locationNote = locationNote.copy(value = it, confirmed = false)) } },
                         { update(index) { copy(locationNote = locationNote.copy(confirmed = it)) } })
+                    ReviewField("教师", draft.teacher, saving,
+                        { update(index) { copy(teacher = teacher.copy(value = it, confirmed = false)) } },
+                        { update(index) { copy(teacher = teacher.copy(confirmed = it)) } })
+                    ReviewField("周次（空为全部，如 1-16）", draft.weeks, saving,
+                        { update(index) { copy(weeks = weeks.copy(value = it, confirmed = false)) } },
+                        { update(index) { copy(weeks = weeks.copy(confirmed = it)) } })
+                    ReviewField("课程备注", draft.courseNote, saving,
+                        { update(index) { copy(courseNote = courseNote.copy(value = it, confirmed = false)) } },
+                        { update(index) { copy(courseNote = courseNote.copy(confirmed = it)) } })
                     draft.validationErrors().forEach { Text(it.message) }
                     TextButton(onClick = { onChange(drafts.filterIndexed { i, _ -> i != index }) }, enabled = !saving) { Text("移除此课程") }
                 }

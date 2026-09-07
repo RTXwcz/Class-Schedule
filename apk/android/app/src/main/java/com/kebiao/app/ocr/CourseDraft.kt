@@ -16,10 +16,16 @@ data class CourseDraft(
     val building: DraftField<String?>,
     val room: DraftField<String?>,
     val locationNote: DraftField<String?>,
+    val teacher: DraftField<String?> = DraftField(null, 0f),
+    val weeks: DraftField<String?> = DraftField(null, 0f),
+    val courseNote: DraftField<String?> = DraftField(null, 0f),
 ) {
-    fun confirmAll() = copy(name = name.confirm(), weekday = weekday.confirm(), startPeriod = startPeriod.confirm(), endPeriod = endPeriod.confirm(), weekRule = weekRule.confirm(), building = building.confirm(), room = room.confirm(), locationNote = locationNote.confirm())
+    fun confirmAll() = copy(name = name.confirm(), weekday = weekday.confirm(), startPeriod = startPeriod.confirm(), endPeriod = endPeriod.confirm(), weekRule = weekRule.confirm(), building = building.confirm(), room = room.confirm(), locationNote = locationNote.confirm(), teacher = teacher.confirm(), weeks = weeks.confirm(), courseNote = courseNote.confirm())
     fun hasLowConfidenceFields() = listOf(name, weekday, startPeriod, endPeriod, weekRule, building, room).any { it.confidence < 0.8f }
     fun validationErrors(): List<ValidationIssue> = buildList {
+        runCatching { com.kebiao.app.domain.WeekSelection.parse(weeks.value.orEmpty()) }.exceptionOrNull()?.let {
+            add(ValidationIssue("weeks", it.message ?: "周次无效"))
+        }
         if (name.value.isBlank()) add(ValidationIssue("name", "课程名称不能为空"))
         if (weekday.value !in 1..7) add(ValidationIssue("weekday", "星期必须为1到7"))
         if (weekRule.value == null) add(ValidationIssue("weekRule", "请选择每周、单周或双周"))

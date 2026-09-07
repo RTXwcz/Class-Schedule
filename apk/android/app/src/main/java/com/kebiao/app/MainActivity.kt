@@ -19,23 +19,24 @@ import com.kebiao.app.data.ScheduleRepository
 import com.kebiao.app.data.local.AppDatabase
 import com.kebiao.app.data.settings.AppSettingsStore
 import com.kebiao.app.notifications.ReminderCoordinator
-import com.kebiao.app.mcp.McpAuthStore
-import com.kebiao.app.mcp.McpServer
-import com.kebiao.app.mcp.McpToolRegistry
-import com.kebiao.app.mcp.RepositoryScheduleStore
+import com.kebiao.app.mcp.McpService
 import com.kebiao.app.imports.OpenAiImageImporter
+import com.kebiao.app.ocr.OcrModelManager
+import com.kebiao.app.ocr.PaddleOcrEngine
 import com.kebiao.app.ui.AppViewModel
 import com.kebiao.app.ui.ScheduleApp
 
 class MainActivity : ComponentActivity() {
-    private var mcpServer: McpServer? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val permissions = getSharedPreferences("permission_requests", MODE_PRIVATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !permissions.getBoolean("notification_requested", false)
         ) {
+            permissions.edit().putBoolean("notification_requested", true).apply()
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST)
         }
         val database = AppDatabase.getInstance(applicationContext)
@@ -44,15 +45,15 @@ class MainActivity : ComponentActivity() {
         val viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                AppViewModel(repository, settingsStore, openAiImporter = OpenAiImageImporter(applicationContext)) as T
+                AppViewModel(repository, settingsStore, openAiImporter = OpenAiImageImporter(applicationContext),
+                    localOcrManager = OcrModelManager(applicationContext),
+                    recognizeLocal = { uri, id -> PaddleOcrEngine(applicationContext, id).recognize(uri) }) as T
         })[AppViewModel::class.java]
         ReminderCoordinator(applicationContext, repository, settingsStore).start(lifecycleScope)
-        val mcp = McpServer(applicationContext, McpToolRegistry(RepositoryScheduleStore(repository), McpAuthStore(applicationContext), writeConfirmation = true))
-        mcpServer = mcp
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 settingsStore.settings.collectLatest { settings ->
-                    if (settings.mcpEnabled) mcp.start(lifecycleScope) else mcp.stop()
+                    if (settings.mcpEnabled) McpService.start(applicationContext) else McpService.stop(applicationContext)
                 }
             }
         }
@@ -61,9 +62,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        mcpServer?.stop()
-        super.onDestroy()
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch { ReminderCoordinator.refresh(applicationContext) }
     }
 
     companion object {

@@ -17,6 +17,8 @@ data class AppSettings(
     val reminderLeadMinutes: Int = 10,
     val notificationsEnabled: Boolean = true,
     val useLocalOcr: Boolean = false,
+    val localOcrModel: String = "pp-ocrv6-tiny",
+    val ocrChoiceMade: Boolean = false,
     val mcpEnabled: Boolean = false,
     val mcpPort: Int = 8765,
     val mcpWriteConfirmation: Boolean = true,
@@ -31,6 +33,8 @@ class AppSettingsStore(private val context: Context) {
         val reminderLeadMinutes = intPreferencesKey("reminder_lead_minutes")
         val notificationsEnabled = booleanPreferencesKey("notifications_enabled")
         val useLocalOcr = booleanPreferencesKey("use_local_ocr")
+        val localOcrModel = stringPreferencesKey("local_ocr_model")
+        val ocrChoiceMade = booleanPreferencesKey("ocr_choice_made")
         val mcpEnabled = booleanPreferencesKey("mcp_enabled")
         val mcpPort = intPreferencesKey("mcp_port")
         val mcpWriteConfirmation = booleanPreferencesKey("mcp_write_confirmation")
@@ -45,6 +49,8 @@ class AppSettingsStore(private val context: Context) {
             reminderLeadMinutes = (p[Keys.reminderLeadMinutes] ?: 10).coerceIn(0, 120),
             notificationsEnabled = p[Keys.notificationsEnabled] ?: true,
             useLocalOcr = p[Keys.useLocalOcr] ?: false,
+            localOcrModel = p[Keys.localOcrModel] ?: "pp-ocrv6-tiny",
+            ocrChoiceMade = p[Keys.ocrChoiceMade] ?: false,
             mcpEnabled = p[Keys.mcpEnabled] ?: false,
             mcpPort = (p[Keys.mcpPort] ?: 8765).coerceIn(1024, 65535),
             mcpWriteConfirmation = p[Keys.mcpWriteConfirmation] ?: true,
@@ -61,6 +67,8 @@ class AppSettingsStore(private val context: Context) {
                 reminderLeadMinutes = p[Keys.reminderLeadMinutes] ?: 10,
                 notificationsEnabled = p[Keys.notificationsEnabled] ?: true,
                 useLocalOcr = p[Keys.useLocalOcr] ?: false,
+                localOcrModel = p[Keys.localOcrModel] ?: "pp-ocrv6-tiny",
+                ocrChoiceMade = p[Keys.ocrChoiceMade] ?: false,
                 mcpEnabled = p[Keys.mcpEnabled] ?: false,
                 mcpPort = p[Keys.mcpPort] ?: 8765,
                 mcpWriteConfirmation = p[Keys.mcpWriteConfirmation] ?: true,
@@ -73,6 +81,8 @@ class AppSettingsStore(private val context: Context) {
             p[Keys.reminderLeadMinutes] = next.reminderLeadMinutes.coerceIn(0, 120)
             p[Keys.notificationsEnabled] = next.notificationsEnabled
             p[Keys.useLocalOcr] = next.useLocalOcr
+            p[Keys.localOcrModel] = next.localOcrModel
+            p[Keys.ocrChoiceMade] = next.ocrChoiceMade
             p[Keys.mcpEnabled] = next.mcpEnabled
             p[Keys.mcpPort] = next.mcpPort.coerceIn(1024, 65535)
             p[Keys.mcpWriteConfirmation] = next.mcpWriteConfirmation

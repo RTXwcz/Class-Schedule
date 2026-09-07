@@ -32,6 +32,10 @@ class ScheduleResolver {
             .asSequence()
             .filter { it.weekday == effectiveWeekday }
             .filter { course ->
+                course.weeks.isEmpty() || (semesterStart != null && !date.isBefore(semesterStart) &&
+                    (ChronoUnit.WEEKS.between(semesterStart, date).toInt() + 1) in course.weeks)
+            }
+            .filter { course ->
                 when (course.weekRule) {
                     WeekRule.ALL -> true
                     WeekRule.ODD, WeekRule.EVEN -> weekParity == course.weekRule

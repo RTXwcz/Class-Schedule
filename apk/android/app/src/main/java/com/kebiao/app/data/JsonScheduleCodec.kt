@@ -29,6 +29,9 @@ data class ScheduleCourse(
     val source: String = "IMPORT",
     val createdAtEpochMillis: Long = 0L,
     val updatedAtEpochMillis: Long = 0L,
+    val teacher: String? = null,
+    val weeks: List<Int> = emptyList(),
+    val courseNote: String? = null,
 )
 
 data class ScheduleExam(
@@ -152,6 +155,12 @@ object JsonScheduleCodec {
             source = obj.string("source")?.ifBlank { "IMPORT" } ?: "IMPORT",
             createdAtEpochMillis = obj.long("createdAtEpochMillis") ?: 0L,
             updatedAtEpochMillis = obj.long("updatedAtEpochMillis") ?: 0L,
+            teacher = obj.string("teacher"),
+            weeks = obj["weeks"].asArray().map { value ->
+                requireNotNull((value as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull)
+                    .also { require(it in 1..60) { "周次须为 1 到 60" } }
+            }.also { require(it.distinct().size == it.size) { "周次不能重复" } },
+            courseNote = obj.string("courseNote"),
         )
     }
 
@@ -193,6 +202,9 @@ object JsonScheduleCodec {
         course.building?.let { put("building", it) }
         course.room?.let { put("room", it) }
         course.locationNote?.let { put("locationNote", it) }
+        course.teacher?.let { put("teacher", it) }
+        put("weeks", JsonArray(course.weeks.map(::JsonPrimitive)))
+        course.courseNote?.let { put("courseNote", it) }
         put("source", course.source)
         put("createdAtEpochMillis", course.createdAtEpochMillis)
         put("updatedAtEpochMillis", course.updatedAtEpochMillis)

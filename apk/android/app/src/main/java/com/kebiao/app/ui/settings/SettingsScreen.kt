@@ -14,6 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,12 +30,14 @@ import com.kebiao.app.imports.OpenAiImageContract
 import androidx.compose.ui.unit.dp
 import com.kebiao.app.domain.model.ScheduleOverride
 import com.kebiao.app.ui.AppViewModel
+import com.kebiao.app.mcp.McpSettingsSection
 import java.time.LocalDate
 
 @Composable
 fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues()) {
     val state by viewModel.uiState.collectAsState()
     var semesterDate by remember(state.settings.semesterStartDate) { mutableStateOf(state.settings.semesterStartDate.orEmpty()) }
+    var semesterError by remember { mutableStateOf<String?>(null) }
     var showOverrideEditor by remember { mutableStateOf(false) }
     var openAiKey by remember { mutableStateOf("") }
     var openAiEndpoint by remember(state.settings.openAiEndpoint) { mutableStateOf(state.settings.openAiEndpoint) }
@@ -47,10 +50,20 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
     ) {
         item { Text("设置") }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth()) {
+                listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (value, label) ->
+                    Column(Modifier.weight(1f)) {
+                        RadioButton(state.settings.theme == value, { viewModel.updateSettings { it.copy(theme = value) } })
+                        Text(label)
+                    }
+                }
+            }
+        }
+        item {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("单双周计算")
-                    Text("以学期开始日期为第 1 周（单周）。之后每隔 7 天切换一次：第 1、3、5 周是单周，第 2、4、6 周是双周。未设置学期开始日期时，单双周课程不会被过滤。")
+                    Text("以学期开始日期为第 1 周（单周）。之后每隔 7 天切换一次：第 1、3、5 周是单周，第 2、4、6 周是双周。未设置学期开始日期或日期早于开学时，单双周课程暂不列入当天课表。")
                     OutlinedTextField(
                         value = semesterDate,
                         onValueChange = { semesterDate = it },
@@ -61,15 +74,17 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
                             val date = runCatching { LocalDate.parse(semesterDate.trim()) }.getOrNull()
-                            viewModel.updateSemesterStartDate(date)
+                            if (date != null) { viewModel.updateSemesterStartDate(date); semesterError = null }
+                            else semesterError = "请输入有效日期，例如 2026-09-07"
                         }) { Text("保存日期") }
                         TextButton(onClick = { semesterDate = ""; viewModel.updateSemesterStartDate(null) }) { Text("清除") }
                     }
+                    semesterError?.let { Text(it) }
                 }
             }
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("OpenAI 图片导入")
                     OutlinedTextField(openAiEndpoint, { openAiEndpoint = it }, label = { Text("API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -90,25 +105,20 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
             }
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("智能导入与 Agent")
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("允许下载本地 OCR 模型")
-                        Switch(checked = state.settings.useLocalOcr, onCheckedChange = { value -> viewModel.updateSettings { it.copy(useLocalOcr = value) } })
-                    }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("启用局域网 MCP")
-                        Switch(checked = state.settings.mcpEnabled, onCheckedChange = { value -> viewModel.updateSettings { it.copy(mcpEnabled = value) } })
-                    }
-                    Text("MCP 默认使用端口 ${state.settings.mcpPort}，启用后需使用配对 Token。")
+                    OcrModelSection(viewModel)
                 }
             }
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            McpSettingsSection(state.settings, viewModel::updateSettings)
+        }
+        item {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("课程提醒")
+                    ReminderSettingsActions(state.settings.notificationsEnabled)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("启用通知")
                         Switch(

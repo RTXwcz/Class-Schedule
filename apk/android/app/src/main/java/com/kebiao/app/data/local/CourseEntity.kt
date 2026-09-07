@@ -2,6 +2,7 @@ package com.kebiao.app.data.local
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
 
 @Entity(tableName = "courses")
 data class CourseEntity(
@@ -17,4 +18,7 @@ data class CourseEntity(
     val source: String,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
+    val teacher: String? = null,
+    @ColumnInfo(defaultValue = "'[]'") val weeksJson: String = "[]",
+    val courseNote: String? = null,
 )

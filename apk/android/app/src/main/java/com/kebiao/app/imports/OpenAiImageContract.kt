@@ -25,7 +25,7 @@ object OpenAiImageContract {
                     putJsonArray("content") {
                         addJsonObject {
                             put("type", "text")
-                            put("text", "识别课表，逐门返回 JSON 数组。字段 name, weekday(1-7), startPeriod, endPeriod, weekRule(ALL/ODD/EVEN), building, room, locationNote。每个上课时段分别列出。教学楼与教室分开，教师及其他信息保留到 locationNote。看不清的字段填 null，不要猜测，不要输出 Markdown。")
+                            put("text", "识别课表，逐门返回 JSON 数组。字段 name, weekday(1-7), startPeriod, endPeriod, weekRule(ALL/ODD/EVEN), building, room, locationNote, teacher, weeks(周次字符串，如1-16或1,3,5-8), courseNote。每个上课时段分别列出。教学楼、教室、教师分开；其他课程信息保留到courseNote。看不清的字段填 null，不要猜测，不要输出 Markdown。")
                         }
                         addJsonObject {
                             put("type", "image_url")
@@ -59,6 +59,9 @@ object OpenAiImageContract {
                 building = DraftField(value("building"), 0f),
                 room = DraftField(value("room"), 0f),
                 locationNote = DraftField(value("locationNote"), 0f),
+                teacher = DraftField(value("teacher"), 0f),
+                weeks = DraftField(value("weeks"), 0f),
+                courseNote = DraftField(value("courseNote"), 0f),
             )
         }
     }

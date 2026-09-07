@@ -4,16 +4,37 @@ import androidx.room.withTransaction
 import com.kebiao.app.data.local.AppDatabase
 import com.kebiao.app.data.local.CourseEntity
 import com.kebiao.app.data.local.ExamEntity
+import com.kebiao.app.data.local.DatasetMetadataEntity
 import com.kebiao.app.data.local.ScheduleOverrideEntity
 import com.kebiao.app.domain.model.Course
 import com.kebiao.app.domain.model.WeekRule
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.onStart
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.util.UUID
 
 class ScheduleRepository(private val database: AppDatabase) {
     private val dao = database.scheduleDao()
+    private val metadataDao = database.datasetMetadataDao()
+
+    suspend fun <T> transaction(block: suspend () -> T): T = database.withTransaction(block)
+
+    fun observeMetadata(): Flow<ScheduleExport> = metadataDao.observe()
+        .onStart { database.withTransaction { ensureMetadata() } }
+        .filterNotNull()
+        .map { it.toExport() }
 
     fun observeCourses(): Flow<List<Course>> = dao.observeCourses().map { entities ->
         entities.mapNotNull { entity -> entity.toDomainOrNull() }
@@ -56,17 +77,19 @@ class ScheduleRepository(private val database: AppDatabase) {
             dao.insertCourses(export.courses.map { it.toEntity(export) })
             dao.insertExams(export.exams.map { it.toEntity(export) })
             dao.insertOverrides(export.overrides.map { it.toEntity() })
+            metadataDao.upsert(export.toMetadata())
         }
     }
 
-    suspend fun appendCourses(courses: List<ScheduleCourse>) {
+    suspend fun appendCourses(courses: List<ScheduleCourse>, source: String = "OPENAI") {
         database.withTransaction {
             courses.forEach(::validateCourse)
-            dao.insertNewCourses(courses.map { it.toEntity(ScheduleExport(source = "OPENAI")) })
+            dao.insertNewCourses(courses.map { it.toEntity(ScheduleExport(source = source)) })
+            touchMetadata(source)
         }
     }
 
-    suspend fun upsertCourse(course: ScheduleCourse) {
+    suspend fun upsertCourse(course: ScheduleCourse, source: String = "NATIVE") {
         validateCourse(course)
         database.withTransaction {
             val now = System.currentTimeMillis()
@@ -76,13 +99,17 @@ class ScheduleRepository(private val database: AppDatabase) {
                     ?: course.createdAtEpochMillis.takeIf { it > 0 } ?: now,
                 updatedAtEpochMillis = now,
             )
-            dao.insertCourses(listOf(saved.toEntity(ScheduleExport(source = "NATIVE"))))
+            dao.insertCourses(listOf(saved.toEntity(ScheduleExport(source = source))))
+            touchMetadata(source)
         }
     }
 
-    suspend fun deleteCourse(id: String) = dao.deleteCourse(id)
+    suspend fun deleteCourse(id: String, source: String = "NATIVE") = database.withTransaction {
+        dao.deleteCourse(id)
+        touchMetadata(source)
+    }
 
-    suspend fun upsertExam(exam: ScheduleExam) {
+    suspend fun upsertExam(exam: ScheduleExam, source: String = "NATIVE") {
         validateExam(exam)
         database.withTransaction {
             val now = System.currentTimeMillis()
@@ -92,23 +119,33 @@ class ScheduleRepository(private val database: AppDatabase) {
                     ?: exam.createdAtEpochMillis.takeIf { it > 0 } ?: now,
                 updatedAtEpochMillis = now,
             )
-            dao.insertExams(listOf(saved.toEntity(ScheduleExport(source = "NATIVE"))))
+            dao.insertExams(listOf(saved.toEntity(ScheduleExport(source = source))))
+            touchMetadata(source)
         }
     }
 
-    suspend fun deleteExam(id: String) = dao.deleteExam(id)
-
-    suspend fun upsertOverride(record: ScheduleOverrideRecord) {
-        validateOverride(record)
-        dao.insertOverrides(listOf(record.toEntity()))
+    suspend fun deleteExam(id: String, source: String = "NATIVE") = database.withTransaction {
+        dao.deleteExam(id)
+        touchMetadata(source)
     }
 
-    suspend fun deleteOverride(date: String) = dao.deleteOverride(date)
+    suspend fun upsertOverride(record: ScheduleOverrideRecord, source: String = "NATIVE") {
+        validateOverride(record)
+        database.withTransaction {
+            dao.insertOverrides(listOf(record.toEntity()))
+            touchMetadata(source)
+        }
+    }
 
-    suspend fun snapshot(): ScheduleExport = database.withTransaction { ScheduleExport(
-        source = "NATIVE",
+    suspend fun deleteOverride(date: String, source: String = "NATIVE") = database.withTransaction {
+        dao.deleteOverride(date)
+        touchMetadata(source)
+    }
+
+    suspend fun snapshot(): ScheduleExport = database.withTransaction { ensureMetadata().toExport().copy(
         courses = dao.getCourses().map { entity ->
-            ScheduleCourse(entity.id, entity.name, entity.weekday, entity.startPeriod, entity.endPeriod, entity.weekRule, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis)
+            ScheduleCourse(entity.id, entity.name, entity.weekday, entity.startPeriod, entity.endPeriod, entity.weekRule, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis,
+                entity.teacher, decodeWeeks(entity.weeksJson), entity.courseNote)
         },
         exams = dao.getExams().map { entity ->
             ScheduleExam(entity.id, entity.subject, entity.date, entity.time, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis)
@@ -116,8 +153,37 @@ class ScheduleRepository(private val database: AppDatabase) {
         overrides = dao.getOverrides().map { entity -> ScheduleOverrideRecord(entity.date, entity.replacementWeekday, entity.note) },
     ) }
 
+    // Every caller holds a Room transaction, so first access creates one durable identity.
+    private suspend fun ensureMetadata(): DatasetMetadataEntity = metadataDao.get()
+        ?: ScheduleExport(datasetId = UUID.randomUUID().toString(), updatedAt = Instant.now().toString(), source = "NATIVE")
+            .toMetadata().also { metadataDao.upsert(it) }
+
+    private suspend fun touchMetadata(source: String) {
+        val previous = ensureMetadata()
+        metadataDao.upsert(previous.copy(updatedAt = Instant.now().toString(), source = source))
+    }
+
+    private fun ScheduleExport.toMetadata() = DatasetMetadataEntity(
+        schemaVersion = schemaVersion,
+        datasetId = datasetId.ifBlank { UUID.randomUUID().toString() },
+        updatedAt = updatedAt.ifBlank { Instant.now().toString() },
+        source = source,
+        extraFieldsJson = JsonObject(extraFields).toString(),
+    )
+
+    private fun DatasetMetadataEntity.toExport() = ScheduleExport(
+        schemaVersion = schemaVersion,
+        datasetId = datasetId,
+        updatedAt = updatedAt,
+        source = source,
+        extraFields = Json.parseToJsonElement(extraFieldsJson).jsonObject,
+    )
+
+    private fun decodeWeeks(value: String) = Json.parseToJsonElement(value).jsonArray.map { it.jsonPrimitive.int }
+
     private fun validateCourse(course: ScheduleCourse) {
-        Course(course.id, course.name, course.weekday, course.startPeriod, course.endPeriod, WeekRule.valueOf(course.weekRule))
+        Course(course.id, course.name, course.weekday, course.startPeriod, course.endPeriod, WeekRule.valueOf(course.weekRule),
+            teacher = course.teacher, weeks = course.weeks, courseNote = course.courseNote)
     }
 
     private fun validateExam(exam: ScheduleExam) {
@@ -144,6 +210,9 @@ class ScheduleRepository(private val database: AppDatabase) {
         source = source.ifBlank { export.source },
         createdAtEpochMillis = createdAtEpochMillis,
         updatedAtEpochMillis = updatedAtEpochMillis,
+        teacher = teacher,
+        weeksJson = JsonArray(weeks.map(::JsonPrimitive)).toString(),
+        courseNote = courseNote,
     )
 
     private fun ScheduleExam.toEntity(export: ScheduleExport) = ExamEntity(
@@ -179,6 +248,9 @@ class ScheduleRepository(private val database: AppDatabase) {
             source = source,
             createdAtEpochMillis = createdAtEpochMillis,
             updatedAtEpochMillis = updatedAtEpochMillis,
+            teacher = teacher,
+            weeks = decodeWeeks(weeksJson),
+            courseNote = courseNote,
         )
     }.getOrNull()
 }
@@ -186,4 +258,5 @@ class ScheduleRepository(private val database: AppDatabase) {
 fun Course.toScheduleCourse() = ScheduleCourse(
     id, name, weekday, startPeriod, endPeriod, weekRule.name, building, room, locationNote,
     source, createdAtEpochMillis, updatedAtEpochMillis,
+    teacher, weeks, courseNote,
 )
