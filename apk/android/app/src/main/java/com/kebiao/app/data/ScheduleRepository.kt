@@ -51,6 +51,12 @@ class ScheduleRepository(private val database: AppDatabase) {
         }
     }
 
+    suspend fun appendCourses(courses: List<ScheduleCourse>) {
+        database.withTransaction {
+            dao.insertCourses(courses.map { it.toEntity(ScheduleExport(source = "OPENAI")) })
+        }
+    }
+
     suspend fun snapshot(): ScheduleExport = ScheduleExport(
         source = "NATIVE",
         courses = dao.getCourses().map { entity ->

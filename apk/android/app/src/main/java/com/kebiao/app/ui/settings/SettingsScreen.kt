@@ -24,6 +24,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.kebiao.app.imports.OpenAiImageContract
 import androidx.compose.ui.unit.dp
 import com.kebiao.app.domain.model.ScheduleOverride
 import com.kebiao.app.ui.AppViewModel
@@ -34,6 +36,10 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
     val state by viewModel.uiState.collectAsState()
     var semesterDate by remember(state.settings.semesterStartDate) { mutableStateOf(state.settings.semesterStartDate.orEmpty()) }
     var showOverrideEditor by remember { mutableStateOf(false) }
+    var openAiKey by remember { mutableStateOf("") }
+    var openAiEndpoint by remember(state.settings.openAiEndpoint) { mutableStateOf(state.settings.openAiEndpoint) }
+    var openAiModel by remember(state.settings.openAiModel) { mutableStateOf(state.settings.openAiModel) }
+    var openAiStatus by remember { mutableStateOf<String?>(null) }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
         contentPadding = PaddingValues(16.dp),
@@ -59,6 +65,27 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
                         }) { Text("保存日期") }
                         TextButton(onClick = { semesterDate = ""; viewModel.updateSemesterStartDate(null) }) { Text("清除") }
                     }
+                }
+            }
+        }
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("OpenAI 图片导入")
+                    OutlinedTextField(openAiEndpoint, { openAiEndpoint = it }, label = { Text("API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(openAiModel, { openAiModel = it }, label = { Text("模型") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(openAiKey, { openAiKey = it }, label = { Text("API Key（本机加密保存）") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Button(onClick = {
+                        openAiStatus = runCatching {
+                            OpenAiImageContract.validateEndpoint(openAiEndpoint.trim())
+                            require(openAiModel.isNotBlank()) { "请填写模型名称" }
+                            viewModel.saveOpenAiKey(openAiKey)
+                            viewModel.updateSettings { it.copy(openAiEndpoint = openAiEndpoint.trim(), openAiModel = openAiModel.trim()) }
+                            openAiKey = ""
+                            "配置已保存"
+                        }.getOrElse { it.message ?: "保存失败" }
+                    }) { Text("保存配置") }
+                    openAiStatus?.let { Text(it) }
                 }
             }
         }

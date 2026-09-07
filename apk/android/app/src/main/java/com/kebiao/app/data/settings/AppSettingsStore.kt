@@ -20,6 +20,8 @@ data class AppSettings(
     val mcpEnabled: Boolean = false,
     val mcpPort: Int = 8765,
     val mcpWriteConfirmation: Boolean = true,
+    val openAiEndpoint: String = "https://api.openai.com/v1/chat/completions",
+    val openAiModel: String = "gpt-4o-mini",
 )
 
 class AppSettingsStore(private val context: Context) {
@@ -32,6 +34,8 @@ class AppSettingsStore(private val context: Context) {
         val mcpEnabled = booleanPreferencesKey("mcp_enabled")
         val mcpPort = intPreferencesKey("mcp_port")
         val mcpWriteConfirmation = booleanPreferencesKey("mcp_write_confirmation")
+        val openAiEndpoint = stringPreferencesKey("openai_endpoint")
+        val openAiModel = stringPreferencesKey("openai_model")
     }
 
     val settings: Flow<AppSettings> = context.appSettingsDataStore.data.map { p ->
@@ -44,6 +48,8 @@ class AppSettingsStore(private val context: Context) {
             mcpEnabled = p[Keys.mcpEnabled] ?: false,
             mcpPort = (p[Keys.mcpPort] ?: 8765).coerceIn(1024, 65535),
             mcpWriteConfirmation = p[Keys.mcpWriteConfirmation] ?: true,
+            openAiEndpoint = p[Keys.openAiEndpoint] ?: "https://api.openai.com/v1/chat/completions",
+            openAiModel = p[Keys.openAiModel] ?: "gpt-4o-mini",
         )
     }
 
@@ -58,6 +64,8 @@ class AppSettingsStore(private val context: Context) {
                 mcpEnabled = p[Keys.mcpEnabled] ?: false,
                 mcpPort = p[Keys.mcpPort] ?: 8765,
                 mcpWriteConfirmation = p[Keys.mcpWriteConfirmation] ?: true,
+                openAiEndpoint = p[Keys.openAiEndpoint] ?: "https://api.openai.com/v1/chat/completions",
+                openAiModel = p[Keys.openAiModel] ?: "gpt-4o-mini",
             )
             val next = transform(current)
             p[Keys.theme] = next.theme
@@ -68,6 +76,8 @@ class AppSettingsStore(private val context: Context) {
             p[Keys.mcpEnabled] = next.mcpEnabled
             p[Keys.mcpPort] = next.mcpPort.coerceIn(1024, 65535)
             p[Keys.mcpWriteConfirmation] = next.mcpWriteConfirmation
+            p[Keys.openAiEndpoint] = next.openAiEndpoint
+            p[Keys.openAiModel] = next.openAiModel
         }
     }
 }

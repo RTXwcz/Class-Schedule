@@ -2,6 +2,8 @@
 
 日期：2026-09-06
 
+后续图片导入变更与验证范围见 [2026-09-07 图片导入验证](2026-09-07-image-import-verification.md)。本文件记录早期构建结果，不代表完整功能验收。
+
 ## 环境
 
 - JDK：Microsoft OpenJDK 21.0.12
@@ -31,12 +33,12 @@
 - Room/DataStore 是原生数据层，Web/PWA 继续通过 JSON 契约交换数据。
 - `ScheduleResolver` 是课程、提醒和 Widget 共同使用的规则入口。
 - 通知权限、精确闹钟、重启恢复和 Glance Widget 已接线。
-- OCR 模型下载支持私有目录、临时文件和 SHA-256 校验；草稿必须逐字段确认。
+- OCR 模型管理代码存在；真实模型包、按用户选择下载及推理流程尚未验收。草稿逐字段确认入口已在后续变更中接入。
 - MCP 默认关闭，启用后通过固定 Token 和局域网地址过滤。
 
 ## 尚未完成的外部验证
 
 - 尚未在真实 Android 设备上验证通知、Widget、精确闹钟和厂商后台限制。
 - PaddleOCR ONNX 推理引擎仍需接入真实模型包；当前已完成模型管理和坐标/字段解析接口，并提供 ML Kit 中文离线回退引擎。
-- OpenAI 图片请求、JSON 响应解析和 API Key Keystore 存储已完成；仍需真实 Key/图片做端到端验证。
+- OpenAI 请求与响应解析已有实现；API Key 以 Keystore 管理的密钥加密后写入应用私有偏好设置。真实 Key/图片端到端验证尚未完成。
 - MCP 已连接应用设置并提供局域网 HTTP JSON-RPC 分发；仍需用真实 Agent 客户端做一次互操作测试。

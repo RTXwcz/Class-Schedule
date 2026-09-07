@@ -41,4 +41,19 @@ class AppDatabaseTest {
         assertEquals(listOf("c1"), courses.map { it.id })
         assertEquals("理科楼", courses.single().building)
     }
+
+    @Test
+    fun imageImportAppendsWithoutReplacingExistingSchedule() = runBlocking {
+        val repository = ScheduleRepository(database)
+        repository.replaceAll(ScheduleExport(
+            courses = listOf(ScheduleCourse("existing", "数学", 1, 1, 2)),
+            exams = listOf(ScheduleExam("exam", "数学", "2026-09-10", "09:00")),
+            overrides = listOf(ScheduleOverrideRecord("2026-09-12", 1, "补课")),
+        ))
+        repository.appendCourses(listOf(ScheduleCourse("imported", "物理", 2, 3, 4, source = "OPENAI")))
+        val snapshot = repository.snapshot()
+        assertEquals(setOf("existing", "imported"), snapshot.courses.map { it.id }.toSet())
+        assertEquals("exam", snapshot.exams.single().id)
+        assertEquals("2026-09-12", snapshot.overrides.single().date)
+    }
 }

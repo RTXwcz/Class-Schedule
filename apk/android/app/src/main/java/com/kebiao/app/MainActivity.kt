@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.room.Room
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.collectLatest
@@ -20,6 +22,7 @@ import com.kebiao.app.mcp.McpAuthStore
 import com.kebiao.app.mcp.McpServer
 import com.kebiao.app.mcp.McpToolRegistry
 import com.kebiao.app.mcp.RepositoryScheduleStore
+import com.kebiao.app.imports.OpenAiImageImporter
 import com.kebiao.app.ui.AppViewModel
 import com.kebiao.app.ui.ScheduleApp
 
@@ -35,7 +38,11 @@ class MainActivity : ComponentActivity() {
         val database = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "schedule.db").build()
         val repository = ScheduleRepository(database)
         val settingsStore = AppSettingsStore(applicationContext)
-        val viewModel = AppViewModel(repository, settingsStore)
+        val viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                AppViewModel(repository, settingsStore, openAiImporter = OpenAiImageImporter(applicationContext)) as T
+        })[AppViewModel::class.java]
         ReminderCoordinator(applicationContext, repository, settingsStore).start(lifecycleScope)
         val mcp = McpServer(applicationContext, McpToolRegistry(RepositoryScheduleStore(repository), McpAuthStore(applicationContext), writeConfirmation = true))
         mcpServer = mcp

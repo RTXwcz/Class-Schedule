@@ -14,6 +14,10 @@ import com.kebiao.app.domain.ScheduleResolver
 import com.kebiao.app.domain.model.Course
 import com.kebiao.app.domain.model.EffectiveCourse
 import com.kebiao.app.domain.model.ScheduleOverride
+import com.kebiao.app.imports.OpenAiImageImporter
+import com.kebiao.app.imports.ImportValidation
+import com.kebiao.app.ocr.CourseDraft
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +34,10 @@ data class AppUiState(
     val settings: AppSettings = AppSettings(),
     val selectedDate: LocalDate = LocalDate.now(),
     val errorMessage: String? = null,
+    val importDrafts: List<CourseDraft>? = null,
+    val importBusy: Boolean = false,
+    val importStatus: String? = null,
+    val importImageUri: android.net.Uri? = null,
 )
 
 /** Coordinates UI state and persistence. Screens never access Room directly. */
@@ -37,6 +45,7 @@ class AppViewModel(
     private val repository: ScheduleRepository? = null,
     private val settingsStore: AppSettingsStore? = null,
     private val resolver: ScheduleResolver = ScheduleResolver(),
+    private val openAiImporter: OpenAiImageImporter? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -126,6 +135,57 @@ class AppViewModel(
     fun exportJson(): String = JsonScheduleCodec.encode(snapshot())
 
     fun clearError() = updateState { copy(errorMessage = null) }
+
+    fun saveOpenAiKey(key: String) { if (key.isNotBlank()) openAiImporter?.saveApiKey(key.trim()) }
+    fun hasOpenAiKey(): Boolean = openAiImporter?.hasApiKey() == true
+
+    fun recognizeImage(uri: android.net.Uri) {
+        if (uiState.value.importBusy) return
+        val settings = uiState.value.settings
+        updateState { copy(importBusy = true, importDrafts = null, importImageUri = uri, importStatus = "正在识别", errorMessage = null) }
+        viewModelScope.launch {
+            try {
+                val drafts = requireNotNull(openAiImporter) { "图片导入尚未初始化" }
+                    .importUri(uri, settings.openAiEndpoint, settings.openAiModel)
+                updateState { copy(importDrafts = drafts, importStatus = null) }
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) {
+                updateState { copy(errorMessage = error.message ?: "图片识别失败", importStatus = null) }
+            } finally { updateState { copy(importBusy = false) } }
+        }
+    }
+
+    fun editImportDrafts(drafts: List<CourseDraft>) {
+        if (!uiState.value.importBusy) updateState { copy(importDrafts = drafts) }
+    }
+
+    fun cancelImport() {
+        if (!uiState.value.importBusy) updateState { copy(importDrafts = null, importImageUri = null, importStatus = null) }
+    }
+
+    fun saveImportDrafts(drafts: List<CourseDraft>) {
+        if (uiState.value.importBusy || !ImportValidation.canPersist(drafts)) return
+        updateState { copy(importBusy = true, errorMessage = null) }
+        viewModelScope.launch {
+            try {
+                val now = System.currentTimeMillis()
+                val courses = drafts.map { draft ->
+                    ScheduleCourse(
+                        id = newCourseId(), name = draft.name.value.trim(), weekday = requireNotNull(draft.weekday.value),
+                        startPeriod = requireNotNull(draft.startPeriod.value), endPeriod = requireNotNull(draft.endPeriod.value),
+                        weekRule = requireNotNull(draft.weekRule.value).name, building = draft.building.value?.trim()?.ifBlank { null },
+                        room = draft.room.value?.trim()?.ifBlank { null }, locationNote = draft.locationNote.value?.trim()?.ifBlank { null },
+                        source = "OPENAI", createdAtEpochMillis = now, updatedAtEpochMillis = now,
+                    )
+                }
+                requireNotNull(repository) { "数据库尚未初始化" }.appendCourses(courses)
+                updateState { copy(importDrafts = null, importImageUri = null, importStatus = "已追加 ${courses.size} 门课程") }
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) {
+                updateState { copy(errorMessage = error.message ?: "保存失败") }
+            } finally { updateState { copy(importBusy = false) } }
+        }
+    }
 
     private fun persist() {
         val repository = repository ?: return

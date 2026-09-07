@@ -12,6 +12,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -27,11 +32,41 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
     val state by viewModel.uiState.collectAsState()
     var json by remember { mutableStateOf(viewModel.exportJson()) }
     var status by remember { mutableStateOf<String?>(null) }
+    var selectedImage by remember { mutableStateOf<Uri?>(null) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> selectedImage = uri }
+    state.importDrafts?.let { drafts ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            state.errorMessage?.let { Text(it, Modifier.padding(16.dp)) }
+            ImportReviewScreen(drafts, saving = state.importBusy, imageUri = state.importImageUri, onChange = viewModel::editImportDrafts,
+                onCancel = viewModel::cancelImport, onConfirm = viewModel::saveImportDrafts)
+        }
+        return
+    }
+    selectedImage?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { selectedImage = null },
+            title = { Text("发送图片进行识别") },
+            text = {
+                Column {
+                    ImportImagePreview(uri)
+                    Text("图片将发送至 ${state.settings.openAiEndpoint}，使用模型 ${state.settings.openAiModel}。")
+                }
+            },
+            confirmButton = { TextButton(onClick = { selectedImage = null; viewModel.recognizeImage(uri) }) { Text("开始识别") } },
+            dismissButton = { TextButton(onClick = { selectedImage = null }) { Text("取消") } },
+        )
+    }
     Column(
         modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("导入与导出")
+        Button(onClick = { picker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }, enabled = !state.importBusy && viewModel.hasOpenAiKey()) {
+            Text("选择课表图片 · OpenAI")
+        }
+        if (!viewModel.hasOpenAiKey()) Text("请先在设置中配置 API Key")
+        if (state.importBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        state.importStatus?.let { Text(it) }
         Text("原生应用与 Web/PWA 使用相同 JSON 格式。导入会替换当前课程、考试和调休数据。")
         OutlinedTextField(
             value = json,
