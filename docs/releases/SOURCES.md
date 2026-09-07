@@ -1,8 +1,11 @@
 # Corresponding source and dependency sources
 
 The application source, build scripts, Gradle Wrapper and npm lockfile are
-available at https://github.com/RTXwcz/Class-Schedule/tree/v1.3.0 and in the
-`class-schedule-v1.3.0-source.zip` asset next to the APK. No proprietary signing
+available in the `class-schedule-v1.3.0-arm-source.zip` asset next to the two
+ARM APKs. The exact packaging revision is linked in the Release notes.
+https://github.com/RTXwcz/Class-Schedule/tree/v1.3.0 retains the original
+first-release packaging; use the ARM source asset for the updated ABI split.
+No proprietary signing
 key is needed to build a modified version; sign it with your own Android key.
 
 The source includes the adapted PaddleOCR Kotlin SDK. Its exact upstream

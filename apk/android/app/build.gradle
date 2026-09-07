@@ -26,6 +26,14 @@ android {
     buildFeatures {
         compose true
     }
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false
+        }
+    }
     compileOptions {
         coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_21

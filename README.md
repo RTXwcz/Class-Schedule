@@ -22,7 +22,14 @@
 
 ## 下载与安装
 
-首个版本：[v1.3.0](https://github.com/RTXwcz/Class-Schedule/releases/tag/v1.3.0)。下载 `class-schedule-v1.3.0.apk`，在 **Android 7.0（API 24）及以上**设备上安装。Release 提供正式签名 APK、SHA-256 校验文件和对应版本源码。
+首个版本：[v1.3.0](https://github.com/RTXwcz/Class-Schedule/releases/tag/v1.3.0)。提供两个独立的正式签名 APK，要求 **Android 7.0（API 24）及以上**：
+
+| 文件 | 适用设备 |
+| --- | --- |
+| [arm64-v8a（ARMv8，推荐）](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.3.0/class-schedule-v1.3.0-arm64-v8a.apk) | 大多数现代 Android 手机的 64 位系统 |
+| [armeabi-v7a（ARMv7）](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.3.0/class-schedule-v1.3.0-armeabi-v7a.apk) | 使用 32 位 ARM Android 系统的设备 |
+
+不再提供 x86/x86_64 或通用 APK。Release 附带 SHA-256 校验文件和 ARM 打包配置对应的源码包。
 
 如果此前安装的是 debug APK，签名与首发版不同：请先导出 JSON 备份，再卸载旧版、安装首发版并导入备份；正式版之间可使用同一签名升级。
 
@@ -41,7 +48,7 @@ cd android
 ./gradlew.bat :app:assembleDebug
 ```
 
-产物位于 `apk/android/app/build/outputs/apk/debug/app-debug.apk`。中文路径下建议使用 ASCII junction 构建，完整说明见 [`apk/构建APK.md`](apk/构建APK.md)。
+产物位于 `apk/android/app/build/outputs/apk/debug/`，分别为 `app-arm64-v8a-debug.apk`、`app-armeabi-v7a-debug.apk`。中文路径下建议使用 ASCII junction 构建，完整说明见 [`apk/构建APK.md`](apk/构建APK.md)。
 
 运行 JVM 测试：
 

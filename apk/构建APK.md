@@ -12,7 +12,7 @@
 2. 启动 Android Studio → **Open** → 选择本目录里的 `android` 文件夹。
 3. 首次打开会自动 Gradle 同步（联网下载依赖，约几分钟，耐心等右下角进度条结束）。
 4. 顶部菜单 **Build → Build App Bundle(s) / APK(s) → Build APK(s)**。
-5. 完成后右下角弹出提示 → 点 **locate**，得到 `apk/android/app/build/outputs/apk/debug/app-debug.apk`。
+5. 完成后右下角弹出提示 → 点 **locate**，在 `apk/android/app/build/outputs/apk/debug/` 得到 `app-arm64-v8a-debug.apk` 和 `app-armeabi-v7a-debug.apk`。
 6. 把这个 `.apk` 传到手机（微信/数据线/网盘均可），点击安装；首次安装需在系统设置里允许「安装未知来源应用」。
 
 ## 方式二：命令行
@@ -36,7 +36,7 @@ cd D:\kebiao-build\apk\android
 gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --console=plain
 ```
 
-产物同样在 `apk/android/app/build/outputs/apk/debug/app-debug.apk`。
+两个调试产物同样位于 `apk/android/app/build/outputs/apk/debug/`。仅构建 ARM64 和 ARMv7，不生成通用包；x86/x86_64 模拟器不再作为可安装测试目标，应使用对应 ARM 设备。
 
 ## 原生配置
 
@@ -78,4 +78,4 @@ Windows 维护者可使用 `tools/build-release.ps1`：传入仓库外的 PKCS12
   -CredentialFile D:/Android/Signing/Class-Schedule/release.credentials.xml
 ```
 
-已签名产物：`apk/android/app/build/outputs/apk/release/app-release.apk`。不要将签名密钥或密码提交到 Git。Fork 可使用自己的密钥签名安装；不同密钥之间切换时需备份数据并重新安装。
+已签名产物：`apk/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk` 和 `app-armeabi-v7a-release.apk`。不生成通用 APK。不要将签名密钥或密码提交到 Git。Fork 可使用自己的密钥签名安装；不同密钥之间切换时需备份数据并重新安装。
