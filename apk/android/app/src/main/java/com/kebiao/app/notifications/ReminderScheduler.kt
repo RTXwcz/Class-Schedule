@@ -40,11 +40,13 @@ class ReminderScheduler(private val context: Context) {
         courses: List<Course>,
         overrides: List<ScheduleOverride>,
         leadMinutes: Long = 10,
+        parityEnabled: Boolean = true,
+        periods: List<LessonPeriod> = PeriodSchedule.defaults,
     ) {
         cancelAll()
         if (!notificationsAllowed()) return
         val plans = ReminderPlanner.plan(now, semesterStart, courses, overrides, leadMinutes,
-            includeDue = true, deliveredKeys = ReminderDeliveryStore.deliveredKeys(context, now.toLocalDate()))
+            includeDue = true, deliveredKeys = ReminderDeliveryStore.deliveredKeys(context, now.toLocalDate()), parityEnabled = parityEnabled, periods = periods)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putStringSet(KEY_KEYS, plans.map { it.key }.toSet()).apply()
         plans.forEach { plan ->

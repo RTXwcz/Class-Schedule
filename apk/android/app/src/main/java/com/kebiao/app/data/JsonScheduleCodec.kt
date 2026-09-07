@@ -45,6 +45,8 @@ data class ScheduleExam(
     val source: String = "IMPORT",
     val createdAtEpochMillis: Long = 0L,
     val updatedAtEpochMillis: Long = 0L,
+    val type: String = "EXAM",
+    val note: String? = null,
 )
 
 data class ScheduleOverrideRecord(
@@ -137,7 +139,7 @@ object JsonScheduleCodec {
         val weekday = obj.int("weekday") ?: obj.int("day") ?: return null
         val start = obj.int("startPeriod") ?: obj.int("start") ?: return null
         val end = obj.int("endPeriod") ?: obj.int("end") ?: return null
-        if (weekday !in 1..7 || start !in 1..12 || end !in 1..12 || start > end) return null
+        if (weekday !in 1..7 || start !in 1..48 || end !in 1..48 || start > end) return null
         val location = obj.string("location")?.trim()?.takeIf(String::isNotBlank)
         val modernBuilding = obj.string("building")?.trim()?.takeIf(String::isNotBlank)
         val modernRoom = obj.string("room")?.trim()?.takeIf(String::isNotBlank)
@@ -169,12 +171,16 @@ object JsonScheduleCodec {
         val id = obj.string("id")?.takeIf(String::isNotBlank) ?: return null
         val subject = (obj.string("subject") ?: obj.string("name"))?.trim()?.takeIf(String::isNotBlank) ?: return null
         val date = obj.string("date")?.trim()?.takeIf(String::isNotBlank) ?: return null
+        val type = obj.string("type") ?: "EXAM"
+        require(type in setOf("EXAM", "EVENT")) { "不支持的日历类型：$type" }
         val location = obj.string("location")?.trim()?.takeIf(String::isNotBlank)
         val split = splitLocation(location)
         return ScheduleExam(
             id = id,
             subject = subject,
             date = date,
+            type = type,
+            note = obj.string("note"),
             time = obj.string("time"),
             building = obj.string("building")?.takeIf(String::isNotBlank) ?: split.first,
             room = obj.string("room")?.takeIf(String::isNotBlank) ?: split.second,
@@ -211,7 +217,10 @@ object JsonScheduleCodec {
     }
 
     private fun encodeExam(exam: ScheduleExam) = buildJsonObject {
+        require(exam.type in setOf("EXAM", "EVENT")) { "不支持的日历类型：${exam.type}" }
         put("id", exam.id)
+        put("type", exam.type)
+        exam.note?.let { put("note", it) }
         put("subject", exam.subject)
         put("date", exam.date)
         exam.time?.let { put("time", it) }

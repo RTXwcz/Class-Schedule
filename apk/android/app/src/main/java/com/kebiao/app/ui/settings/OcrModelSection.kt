@@ -32,6 +32,7 @@ fun OcrModelSection(viewModel: AppViewModel, onboarding: Boolean = false) {
     var selected by remember(state.settings.localOcrModel) { mutableStateOf(AppViewModel.modelId(state.settings.localOcrModel)) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("本地图片识别", style = MaterialTheme.typography.titleMedium)
+        Text("下载源：hf-mirror.com · 下载并校验后可离线使用", style = MaterialTheme.typography.bodySmall)
         OcrModelManager.ModelId.entries.forEach { id ->
             Row(Modifier.fillMaxWidth().selectable(selected = selected == id,
                 enabled = !state.modelDownloadBusy && !state.importBusy, role = Role.RadioButton, onClick = {

@@ -24,6 +24,35 @@ import kotlinx.serialization.json.jsonObject
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class McpToolRegistryTest {
+    @Test fun eventsAreCreatedListedByDateEditedAndDeletedWithoutLosingNotes() = runTest {
+        val store = InMemoryScheduleStore()
+        val registry = registry(store)
+        val input = args("""{"id":"event","subject":"读书会","date":"2026-09-07","type":"EVENT","note":"带上阅读笔记","locationNote":"东门","building":"图书馆","room":"302"}""")
+        val created = registry.callTool("schedule.upsert_exam", input)
+        assertFalse(created.isError!!)
+        val saved = created.data().getValue("after").jsonObject
+        assertEquals(JsonPrimitive("EVENT"), saved["type"])
+        assertEquals(JsonPrimitive("带上阅读笔记"), saved["note"])
+        assertEquals(JsonPrimitive("东门"), saved["locationNote"])
+        assertEquals(saved, registry.callTool("schedule.list_exams", empty).data().getValue("exams").jsonArray.single())
+        assertEquals(saved, registry.callTool("schedule.for_date", args("""{"date":"2026-09-07"}""")).data().getValue("exams").jsonArray.single())
+        val edited = registry.callTool("schedule.upsert_exam", JsonObject(input + ("note" to JsonPrimitive("改到线上"))))
+        assertEquals(JsonPrimitive("改到线上"), edited.data().getValue("after").jsonObject["note"])
+        assertEquals(JsonPrimitive("invalid_arguments"), registry.callTool("schedule.upsert_exam", JsonObject(input + ("type" to JsonPrimitive("COURSE")))).error())
+        assertFalse(registry.callTool("schedule.delete_exam", args("""{"id":"event"}""")).isError!!)
+        assertTrue(store.value.exams.isEmpty())
+    }
+
+    @Test fun disabledParityReturnsOddCoursesAsWeeklyWithoutClaimingKnownParity() = runTest {
+        val store = InMemoryScheduleStore()
+        store.value = ScheduleExport(courses = listOf(ScheduleCourse("odd", "数学", 1, 1, 2, "ODD")))
+        val registry = McpToolRegistry(store, McpApprovalQueue(), { false }, { LocalDate.parse("2026-09-07") }, { false })
+        val result = registry.callTool("schedule.for_date", args("""{"date":"2026-09-14"}""")).data()
+        assertEquals(JsonPrimitive(false), result["parityEnabled"])
+        assertEquals(JsonPrimitive(false), result["weekParityKnown"])
+        assertEquals(1, result.getValue("courses").jsonArray.size)
+    }
+
     private val empty = JsonObject(emptyMap())
     private fun args(value: String) = Json.parseToJsonElement(value).jsonObject
     private fun registry(store: ScheduleStore, queue: McpApprovalQueue = McpApprovalQueue(), confirmation: suspend () -> Boolean = { false }, start: LocalDate? = LocalDate.parse("2026-09-07")) =

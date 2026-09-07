@@ -32,7 +32,7 @@ class DatasetPersistenceTest {
 
     private fun open(): ScheduleRepository {
         val opened = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(AppDatabase.MIGRATION_1_2).build()
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
         database = opened
         return ScheduleRepository(opened)
     }
@@ -135,9 +135,49 @@ class DatasetPersistenceTest {
             migrated.exams.single())
         assertEquals(ScheduleOverrideRecord("2026-09-12", 1, "补课"), migrated.overrides.single())
         assertFalse(migrated.datasetId == "default")
-        assertEquals(2, database!!.openHelper.readableDatabase.version)
+        assertEquals(3, database!!.openHelper.readableDatabase.version)
         assertEquals(migrated, reopen().snapshot())
         repositoryAfterReopenCanStoreNewCourseFields(migrated.courses.single())
+    }
+
+    @Test fun versionTwoMigrationPreservesExamsAndEventFieldsSurviveDiskReopen() = runBlocking {
+        val file = context.getDatabasePath(databaseName)
+        file.parentFile?.mkdirs()
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { legacy ->
+            legacy.execSQL("CREATE TABLE courses (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, weekday INTEGER NOT NULL, startPeriod INTEGER NOT NULL, endPeriod INTEGER NOT NULL, weekRule TEXT NOT NULL, building TEXT, room TEXT, locationNote TEXT, source TEXT NOT NULL, createdAtEpochMillis INTEGER NOT NULL, updatedAtEpochMillis INTEGER NOT NULL, teacher TEXT, weeksJson TEXT NOT NULL DEFAULT '[]', courseNote TEXT)")
+            legacy.execSQL("CREATE TABLE exams (id TEXT NOT NULL PRIMARY KEY, subject TEXT NOT NULL, date TEXT NOT NULL, time TEXT, building TEXT, room TEXT, locationNote TEXT, source TEXT NOT NULL, createdAtEpochMillis INTEGER NOT NULL, updatedAtEpochMillis INTEGER NOT NULL)")
+            legacy.execSQL("CREATE TABLE schedule_overrides (date TEXT NOT NULL PRIMARY KEY, replacementWeekday INTEGER NOT NULL, note TEXT)")
+            legacy.execSQL("CREATE TABLE dataset_metadata (id INTEGER NOT NULL PRIMARY KEY, schemaVersion INTEGER NOT NULL, datasetId TEXT NOT NULL, updatedAt TEXT NOT NULL, source TEXT NOT NULL, extraFieldsJson TEXT NOT NULL)")
+            legacy.execSQL("INSERT INTO exams VALUES ('legacy-exam', '数学期末', '2026-12-20', '09:00', 'B', '201', '东门', 'IMPORT', 30, 40)")
+            legacy.execSQL("INSERT INTO dataset_metadata VALUES (1, 1, 'old-dataset', '2026-09-07T00:00:00Z', 'IMPORT', '{}')")
+            legacy.version = 2
+        }
+        val repository = open()
+        val migrated = repository.snapshot()
+        assertEquals("old-dataset", migrated.datasetId)
+        val legacyExam = migrated.exams.single()
+        assertEquals("EXAM", legacyExam.type)
+        assertEquals(null, legacyExam.note)
+        assertEquals("东门", legacyExam.locationNote)
+        assertEquals(30L, legacyExam.createdAtEpochMillis)
+        assertEquals(3, database!!.openHelper.readableDatabase.version)
+        repository.upsertExam(ScheduleExam("event", "读书会", "2026-09-12", "15:30", "图书馆", "302", "北门",
+            type = "EVENT", note = "带阅读笔记"))
+        val afterCreate = reopen().snapshot()
+        assertEquals(2, afterCreate.exams.size)
+        val event = afterCreate.exams.single { it.id == "event" }
+        assertEquals("EVENT", event.type)
+        assertEquals("带阅读笔记", event.note)
+        assertEquals("北门", event.locationNote)
+        assertEquals(afterCreate.exams, JsonScheduleCodec.decode(JsonScheduleCodec.encode(afterCreate)).exams)
+        val reopenedRepository = ScheduleRepository(database!!)
+        reopenedRepository.upsertExam(event.copy(type = "EXAM", note = "改为测验"), source = "MCP")
+        val edited = reopen().snapshot().exams.single { it.id == "event" }
+        assertEquals("EXAM", edited.type)
+        assertEquals("改为测验", edited.note)
+        assertEquals(event.createdAtEpochMillis, edited.createdAtEpochMillis)
+        ScheduleRepository(database!!).deleteExam(edited.id)
+        assertEquals(listOf(legacyExam), reopen().snapshot().exams)
     }
 
     private suspend fun repositoryAfterReopenCanStoreNewCourseFields(original: ScheduleCourse) {

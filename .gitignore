@@ -7,15 +7,23 @@ apk/android/.kotlin/
 apk/android/build/
 apk/android/app/build/
 apk/android/.idea/
+/.idea/
 
 # Local machine configuration
 apk/android/local.properties
-gradle/
+/gradle/
 .gradle/
 
 # Generated installers
 *.apk
 *.aab
+/dist/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.credentials.xml
+signing.properties
 
 # OS/editor noise
 .DS_Store

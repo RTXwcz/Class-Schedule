@@ -37,6 +37,8 @@ fun ImportReviewScreen(
     padding: PaddingValues = PaddingValues(),
     saving: Boolean = false,
     imageUri: android.net.Uri? = null,
+    parityEnabled: Boolean = true,
+    periodCount: Int = 12,
     onChange: (List<CourseDraft>) -> Unit,
     onCancel: () -> Unit,
     onConfirm: (List<CourseDraft>) -> Unit,
@@ -61,13 +63,13 @@ fun ImportReviewScreen(
                     ReviewField("星期 1-7", draft.weekday, saving,
                         { update(index) { copy(weekday = weekday.copy(value = it.toIntOrNull(), confirmed = false)) } },
                         { update(index) { copy(weekday = weekday.copy(confirmed = it)) } })
-                    ReviewField("开始节次 1-12", draft.startPeriod, saving,
+                    ReviewField("开始节次 1-$periodCount", draft.startPeriod, saving,
                         { update(index) { copy(startPeriod = startPeriod.copy(value = it.toIntOrNull(), confirmed = false)) } },
                         { update(index) { copy(startPeriod = startPeriod.copy(confirmed = it)) } })
-                    ReviewField("结束节次 1-12", draft.endPeriod, saving,
+                    ReviewField("结束节次 1-$periodCount", draft.endPeriod, saving,
                         { update(index) { copy(endPeriod = endPeriod.copy(value = it.toIntOrNull(), confirmed = false)) } },
                         { update(index) { copy(endPeriod = endPeriod.copy(confirmed = it)) } })
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (parityEnabled) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         var expanded by remember { mutableStateOf(false) }
                         Column(Modifier.weight(1f)) {
                             OutlinedButton(onClick = { expanded = true }, enabled = !saving) { Text(draft.weekRule.value?.label() ?: "周次未识别") }
@@ -102,12 +104,13 @@ fun ImportReviewScreen(
                         { update(index) { copy(courseNote = courseNote.copy(value = it, confirmed = false)) } },
                         { update(index) { copy(courseNote = courseNote.copy(confirmed = it)) } })
                     draft.validationErrors().forEach { Text(it.message) }
+                    if ((draft.endPeriod.value ?: 0) > periodCount) Text("课程超出当前每天 $periodCount 节，请先调整作息或修改节次")
                     TextButton(onClick = { onChange(drafts.filterIndexed { i, _ -> i != index }) }, enabled = !saving) { Text("移除此课程") }
                 }
             }
         }
         item {
-            Button(onClick = { onConfirm(drafts) }, enabled = !saving && ImportValidation.canPersist(drafts), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { onConfirm(drafts) }, enabled = !saving && ImportValidation.canPersist(drafts, periodCount), modifier = Modifier.fillMaxWidth()) {
                 Text(if (saving) "正在保存" else "追加 ${drafts.size} 门课程")
             }
             TextButton(onClick = onCancel, enabled = !saving) { Text("放弃此次导入") }

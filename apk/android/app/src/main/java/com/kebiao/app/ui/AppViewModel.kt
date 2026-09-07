@@ -12,6 +12,9 @@ import com.kebiao.app.data.toScheduleCourse
 import com.kebiao.app.data.settings.AppSettings
 import com.kebiao.app.data.settings.AppSettingsStore
 import com.kebiao.app.domain.ScheduleResolver
+import com.kebiao.app.notifications.PeriodSchedule
+import com.kebiao.app.notifications.LessonPeriod
+import kotlinx.serialization.json.Json
 import com.kebiao.app.domain.model.Course
 import com.kebiao.app.domain.model.EffectiveCourse
 import com.kebiao.app.domain.model.ScheduleOverride
@@ -32,6 +35,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.UUID
@@ -85,6 +89,10 @@ class AppViewModel(
     fun selectDate(date: LocalDate) = updateState { copy(selectedDate = date) }
 
     fun addCourse(course: Course) {
+        if (course.endPeriod > uiState.value.settings.periods.size) {
+            updateState { copy(errorMessage = "课程超出当前每天节数，请先在设置中调整作息") }
+            return
+        }
         mutate({ copy(courses = courses.filterNot { it.id == course.id } + course, errorMessage = null) }) {
             upsertCourse(course.toScheduleCourse())
         }
@@ -138,11 +146,22 @@ class AppViewModel(
         }
     }
 
+    fun updatePeriodSchedule(periods: List<LessonPeriod>) {
+        try {
+            val checked = PeriodSchedule.validate(periods)
+            require(uiState.value.courses.all { it.endPeriod <= checked.size }) { "已有课程超出新节数，请先调整课程" }
+            updateSettings { it.copy(periods = checked) }
+        } catch (error: IllegalArgumentException) {
+            updateState { copy(errorMessage = error.message) }
+        }
+    }
+
     fun effectiveCourses(date: LocalDate): List<EffectiveCourse> = resolver.resolve(
         date = date,
         semesterStart = uiState.value.settings.semesterStartDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
         courses = uiState.value.courses,
         overrides = uiState.value.overrides,
+        parityEnabled = uiState.value.settings.parityEnabled,
     )
 
     fun importJson(json: String) {
@@ -152,6 +171,14 @@ class AppViewModel(
             return
         }
         val importedSemester = (export.extraFields["semesterStartDate"] as? JsonPrimitive)?.contentOrNull
+        val importedPeriods = runCatching {
+            val periods = export.extraFields["periods"]?.let { PeriodSchedule.decode(it.toString()) } ?: uiState.value.settings.periods
+            require(export.courses.all { it.endPeriod <= periods.size }) { "导入课程超出当前作息节数，请先调整每日作息，或在 JSON 中附带 periods" }
+            periods
+        }.getOrElse { error ->
+            updateState { copy(errorMessage = error.message ?: "作息时间无效") }
+            return
+        }
         if (importedSemester != null && runCatching { LocalDate.parse(importedSemester) }.isFailure) {
             updateState { copy(errorMessage = "学期开始日期无效") }
             return
@@ -165,6 +192,11 @@ class AppViewModel(
                     errorMessage = null,
                     importStatus = "导入成功",
                     metadata = export.copy(courses = emptyList(), exams = emptyList(), overrides = emptyList()),
+                    settings = settings.copy(
+                        semesterStartDate = if ("semesterStartDate" in export.extraFields) importedSemester else settings.semesterStartDate,
+                        parityEnabled = (export.extraFields["parityEnabled"] as? JsonPrimitive)?.booleanOrNull ?: settings.parityEnabled,
+                        periods = importedPeriods,
+                    ),
                 )
             }
             return
@@ -173,7 +205,11 @@ class AppViewModel(
         viewModelScope.launch {
             try {
                 repository.replaceAll(export)
+                settingsStore?.update { it.copy(periods = importedPeriods) }
                 if ("semesterStartDate" in export.extraFields) settingsStore?.update { it.copy(semesterStartDate = importedSemester) }
+                (export.extraFields["parityEnabled"] as? JsonPrimitive)?.booleanOrNull?.let { enabled ->
+                    settingsStore?.update { it.copy(parityEnabled = enabled) }
+                }
                 updateState { copy(importStatus = "导入成功") }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
@@ -186,7 +222,9 @@ class AppViewModel(
     suspend fun exportCurrentJson(): String {
         val data = repository?.snapshot() ?: snapshot()
         return JsonScheduleCodec.encode(data.copy(extraFields = data.extraFields +
-            ("semesterStartDate" to (uiState.value.settings.semesterStartDate?.let(::JsonPrimitive) ?: JsonNull))))
+            ("semesterStartDate" to (uiState.value.settings.semesterStartDate?.let(::JsonPrimitive) ?: JsonNull)) +
+            ("parityEnabled" to JsonPrimitive(uiState.value.settings.parityEnabled)) +
+            ("periods" to Json.parseToJsonElement(PeriodSchedule.encode(uiState.value.settings.periods)))))
     }
 
     fun clearError() = updateState { copy(errorMessage = null) }
@@ -207,7 +245,11 @@ class AppViewModel(
                 } else requireNotNull(openAiImporter) { "图片导入尚未初始化" }
                     .importUri(uri, settings.openAiEndpoint, settings.openAiModel)
                 require(drafts.isNotEmpty()) { "未识别到课程，请选择更清晰的图片" }
-                updateState { copy(importDrafts = drafts, importStatus = null) }
+                val reviewedDefaults = if (settings.parityEnabled) drafts else drafts.map { draft ->
+                    draft.copy(weekRule = draft.weekRule.copy(
+                        value = draft.weekRule.value ?: com.kebiao.app.domain.model.WeekRule.ALL, confirmed = true))
+                }
+                updateState { copy(importDrafts = reviewedDefaults, importStatus = null) }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
                 updateState { copy(errorMessage = error.message ?: "图片识别失败", importStatus = null) }
@@ -258,7 +300,7 @@ class AppViewModel(
     }
 
     fun saveImportDrafts(drafts: List<CourseDraft>) {
-        if (uiState.value.importBusy || !ImportValidation.canPersist(drafts)) return
+        if (uiState.value.importBusy || !ImportValidation.canPersist(drafts, uiState.value.settings.periods.size)) return
         updateState { copy(importBusy = true, errorMessage = null) }
         viewModelScope.launch {
             try {
@@ -302,6 +344,11 @@ class AppViewModel(
     }
 
     private fun snapshot(): ScheduleExport = uiState.value.metadata.copy(
+        extraFields = uiState.value.metadata.extraFields + mapOf(
+            "parityEnabled" to JsonPrimitive(uiState.value.settings.parityEnabled),
+            "periods" to Json.parseToJsonElement(PeriodSchedule.encode(uiState.value.settings.periods)),
+            "semesterStartDate" to (uiState.value.settings.semesterStartDate?.let(::JsonPrimitive) ?: JsonNull),
+        ),
         courses = uiState.value.courses.map { course ->
             ScheduleCourse(
                 id = course.id,

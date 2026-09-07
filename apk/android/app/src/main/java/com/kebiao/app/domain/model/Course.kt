@@ -21,8 +21,8 @@ data class Course(
         require(id.isNotBlank()) { "Course id must not be blank" }
         require(name.isNotBlank()) { "Course name must not be blank" }
         require(weekday in 1..7) { "Course weekday must be between 1 and 7" }
-        require(startPeriod in 1..12) { "Course start period must be between 1 and 12" }
-        require(endPeriod in 1..12) { "Course end period must be between 1 and 12" }
+        require(startPeriod in 1..48) { "Course start period must be between 1 and 48" }
+        require(endPeriod in 1..48) { "Course end period must be between 1 and 48" }
         require(startPeriod <= endPeriod) { "Course start period must not be after end period" }
         require(weeks.all { it in 1..60 } && weeks.distinct().size == weeks.size) { "Course weeks must be unique values from 1 to 60" }
     }

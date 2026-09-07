@@ -55,6 +55,25 @@ class PaddleOcrDeviceTest {
         verifyChineseRecognition(manager, OcrModelManager.ModelId.SMALL)
     }
 
+    @Test
+    fun freshMirrorDownloadRecognizesChineseAndCleansTemporaryModels() = runBlocking {
+        val folder = java.io.File(context.cacheDir, "mirror-qa-${java.util.UUID.randomUUID()}").apply { mkdirs() }
+        val isolated = object : android.content.ContextWrapper(context) {
+            override fun getApplicationContext(): android.content.Context = this
+            override fun getNoBackupFilesDir(): java.io.File = folder
+        }
+        try {
+            val manager = OcrModelManager(isolated)
+            for (id in OcrModelManager.ModelId.entries) {
+                assertTrue(manager.spec(id).assets.all { java.net.URL(it.url).host == "hf-mirror.com" })
+                assertFalse(manager.isInstalled(id))
+                manager.download(id) { }
+                assertTrue(manager.isInstalled(id))
+                verifyChineseRecognition(manager, id)
+            }
+        } finally { folder.deleteRecursively() }
+    }
+
     private suspend fun verifyChineseRecognition(manager: OcrModelManager, id: OcrModelManager.ModelId = OcrModelManager.ModelId.TINY) {
         val image = Bitmap.createBitmap(1200, 460, Bitmap.Config.ARGB_8888)
         try {

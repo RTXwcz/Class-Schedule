@@ -173,7 +173,7 @@
   .daycol:last-child { border-right: none; }
   .daycol .head { background: linear-gradient(180deg, var(--head-grad-from), var(--head-grad-to)); }
   .daycol .body {
-    position: relative; height: calc(var(--rowH) * 12);
+    position: relative; height: calc(var(--rowH) * var(--periodCount, 12));
     background-image: repeating-linear-gradient(to bottom, var(--line-soft) 0, var(--line-soft) 1px, transparent 1px, transparent var(--rowH));
     cursor: crosshair;
   }
@@ -310,7 +310,7 @@
     </div>
     <div class="seg" id="viewSeg">
       <button data-v="timetable" class="active">课程表</button>
-      <button data-v="calendar">考试日历</button>
+      <button data-v="calendar">考试与日程</button>
     </div>
     <button class="btn btn-ghost" id="themeBtn" onclick="toggleTheme()">☀️ 浅色</button>
     <button class="btn btn-ghost" onclick="openSettings()">⚙ 设置</button>
@@ -320,7 +320,7 @@
       <button class="btn btn-ghost" onclick="loadSample()">示例</button>
     </div>
     <div class="btn-group" id="calendarActions" style="display:none;">
-      <button class="btn btn-primary" onclick="openExamAdd()">＋ 添加考试</button>
+      <button class="btn btn-primary" onclick="openExamAdd()">＋ 添加安排</button>
     </div>
     <button class="btn btn-ghost" onclick="document.getElementById('jsonImport').click()">导入 JSON</button>
     <input id="jsonImport" type="file" accept="application/json,.json" hidden onchange="importData(this)">
@@ -438,9 +438,10 @@
 <div class="overlay" id="examOverlay">
   <div class="modal">
     <h2 id="examTitle">添加考试</h2>
-    <p class="sub">填写考试信息后点击保存</p>
+    <p class="sub">选择类型，填写日期安排后保存</p>
+    <div class="field"><label>类型</label><select id="eType"><option value="EXAM">考试</option><option value="EVENT">日程</option></select></div>
     <div class="field">
-      <label>考试科目</label>
+      <label>科目或日程名称</label>
       <input id="eSubject" placeholder="例如：高等数学">
     </div>
     <div class="row2">
@@ -450,13 +451,14 @@
       </div>
       <div class="field">
         <label>具体时间</label>
-        <input id="eTime" placeholder="例如：09:00-11:00">
+        <input id="eTime" type="time">
       </div>
     </div>
     <div class="field">
       <label>考试位置 <span style="color:var(--hint-ink);font-weight:400;">（可选）</span></label>
       <input id="eLocation" placeholder="例如：教三 201">
     </div>
+    <div class="field"><label>备注（可选）</label><input id="eNote" placeholder="携带材料、活动详情等"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('examOverlay')">取消</button>
       <button class="btn btn-danger" id="examDelete" style="display:none;flex:0 0 auto;padding:9px 14px;" onclick="deleteExam()">删除</button>
@@ -486,6 +488,8 @@
       </div>
     </div>
     <p class="hint">用于「自动」判断单双周：开学后第 1、3、5… 周为单周，第 2、4、6… 周为双周。</p>
+    <div class="field"><label><input type="checkbox" id="fParity"> 启用单双周（自动视图）</label></div>
+    <div class="field"><label>每日作息（每行一节，支持 1–48 节）</label><textarea id="fPeriods" rows="6" placeholder="08:00-08:50&#10;09:00-09:50"></textarea></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('settingsOverlay')">取消</button>
       <button class="btn btn-primary" onclick="saveSettings()">保存</button>
@@ -498,7 +502,7 @@
 <script src="./schedule-contract.js"></script>
 <script>
 /* ================= 基础数据 ================= */
-const PERIODS = [
+let PERIODS = [
   ['08:00','08:50'], ['09:00','09:50'], ['10:10','11:00'], ['11:10','12:00'],
   ['13:00','13:50'], ['14:00','14:50'], ['15:10','16:00'], ['16:10','17:00'],
   ['17:10','18:00'], ['18:40','19:30'], ['19:40','20:30'], ['20:40','21:30'],
@@ -542,7 +546,7 @@ let calYear, calMonth;           // 当前显示的月份
 /* ================= 工具 ================= */
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function timeRange(start, end){ return PERIODS[start-1][0] + ' - ' + PERIODS[end-1][1]; }
+function timeRange(start, end){ return PERIODS[start-1] && PERIODS[end-1] ? PERIODS[start-1][0] + ' - ' + PERIODS[end-1][1] : '第'+start+'-'+end+'节（作息未配置）'; }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function courseColor(name, dark){
   let h = 0; for (const ch of name) h = (h * 31 + ch.codePointAt(0)) >>> 0;
@@ -560,7 +564,7 @@ function todayDateStr(){ const n=new Date(); return fmtDate(n.getFullYear(), n.g
 const CN = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10,'十一':11,'十二':12};
 function cnNum(s){
   s = s.trim(); if (CN[s]) return CN[s];
-  const n = parseInt(s, 10); return (n>=1 && n<=12) ? n : null;
+  const n = parseInt(s, 10); return (n>=1 && n<=PERIODS.length) ? n : null;
 }
 function parseDay(s){
   s = s.trim();
@@ -634,7 +638,7 @@ function todayInfo(){
 function save(){
   localStorage.setItem('schedule_regular_v1', JSON.stringify(regularCourses));
   localStorage.setItem('schedule_exams_v1', JSON.stringify(exams));
-  datasetMetadata = ScheduleContract.encode(datasetMetadata, regularCourses, exams);
+  datasetMetadata = ScheduleContract.encode({...datasetMetadata, periods: PERIODS.map(([start,end])=>({start,end}))}, regularCourses, exams);
   localStorage.setItem('schedule_dataset_v1', JSON.stringify(datasetMetadata));
 }
 function valid(c){ return c && c.name && c.day && c.start; }
@@ -642,6 +646,7 @@ function validExam(e){ return e && e.subject && e.date; }
 function load(){
   try {
     datasetMetadata = JSON.parse(localStorage.getItem('schedule_dataset_v1') || '{}');
+    if (datasetMetadata.periods) PERIODS = ScheduleContract.validatePeriods(datasetMetadata.periods).map(p=>[p.start,p.end]);
     regularCourses = JSON.parse(localStorage.getItem('schedule_regular_v1')||'[]').filter(valid);
     exams = JSON.parse(localStorage.getItem('schedule_exams_v1')||'[]').filter(validExam);
     if (!regularCourses.length){
@@ -656,7 +661,7 @@ function load(){
 /* ================= 课程表渲染 ================= */
 function buildGutter(){
   let h = '<div class="gutter"><div class="head">节次 · 时间</div>';
-  for (let i=1;i<=12;i++){
+  for (let i=1;i<=PERIODS.length;i++){
     h += `<div class="cell"><div class="pn">第${i}节</div><div class="pt">${PERIODS[i-1][0]}-${PERIODS[i-1][1]}</div></div>`;
   }
   return h + '</div>';
@@ -712,6 +717,7 @@ function layoutDay(list){
 
 function render(){
   const grid = $('grid');
+  grid.style.setProperty('--periodCount', PERIODS.length);
   grid.innerHTML = buildGutter() + buildHeads();
   const bodies = grid.querySelectorAll('.daycol .body');
 
@@ -726,7 +732,7 @@ function render(){
     for (let d=1; d<=7; d++) {
       const date = new Date(year, month-1, day+d-1);
       byDay[d] = ScheduleContract.forDate(regularCourses, datasetMetadata.overrides, semesterStart,
-        fmtDate(date.getFullYear(), date.getMonth()+1, date.getDate()));
+        fmtDate(date.getFullYear(), date.getMonth()+1, date.getDate()), datasetMetadata.parityEnabled ?? true);
     }
   } else shown.forEach(c => byDay[c.day].push(c));
 
@@ -755,7 +761,7 @@ function render(){
     body.onclick = (e) => {
       if (e.target !== body) return;
       const rect = body.getBoundingClientRect();
-      const period = Math.max(1, Math.min(12, Math.floor((e.clientY - rect.top)/rh)+1));
+      const period = Math.max(1, Math.min(PERIODS.length, Math.floor((e.clientY - rect.top)/rh)+1));
       openAdd(d, period);
     };
   }
@@ -811,7 +817,7 @@ function fillSelects(){
   daySel.innerHTML = DAYS.map((d,i)=>`<option value="${i+1}">${d}</option>`).join('');
   const startSel = $('fStart'), endSel = $('fEnd');
   let opts = '';
-  for (let i=1;i<=12;i++) opts += `<option value="${i}">第${i}节 ${PERIODS[i-1][0]}</option>`;
+  for (let i=1;i<=PERIODS.length;i++) opts += `<option value="${i}">第${i}节 ${PERIODS[i-1][0]}</option>`;
   startSel.innerHTML = opts; endSel.innerHTML = opts;
 }
 function updateTimePreview(){
@@ -884,7 +890,9 @@ function deleteCurrent(){
 /* ================= 考试表单 ================= */
 function openExamAdd(date){
   examEditingId = null;
-  $('examTitle').textContent = '添加考试';
+  $('examTitle').textContent = '添加安排';
+  $('eType').value = 'EXAM';
+  $('eNote').value = '';
   $('examDelete').style.display = 'none';
   $('eSubject').value = '';
   $('eDate').value = date || todayDateStr();
@@ -896,7 +904,9 @@ function openExamAdd(date){
 function openExamEdit(id){
   const ex = exams.find(x=>x.id===id); if (!ex) return;
   examEditingId = id;
-  $('examTitle').textContent = '编辑考试';
+  $('examTitle').textContent = '编辑安排';
+  $('eType').value = ex.type || 'EXAM';
+  $('eNote').value = ex.note || '';
   $('examDelete').style.display = 'inline-flex';
   $('eSubject').value = ex.subject;
   $('eDate').value = ex.date;
@@ -911,12 +921,14 @@ function saveExam(){
   if (!date){ toast('请选择考试日期'); return; }
   const time = $('eTime').value.trim();
   const location = $('eLocation').value.trim();
+  const type = $('eType').value;
+  const note = $('eNote').value.trim();
   if (examEditingId){
     const ex = exams.find(x=>x.id===examEditingId);
-    Object.assign(ex, {subject, date, time, location});
+    Object.assign(ex, {subject, date, time, location, type, note});
     toast('已保存修改');
   } else {
-    exams.push({ id: uid(), subject, date, time, location });
+    exams.push({ id: uid(), subject, date, time, location, type, note });
     toast('已添加「' + subject + '」');
   }
   save(); renderCalendar(); closeModal('examOverlay');
@@ -1010,14 +1022,28 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 /* ================= 设置 ================= */
 function openSettings(){
   $('fSemStart').value = semesterStart || '';
+  $('fParity').checked = datasetMetadata.parityEnabled ?? true;
+  $('fPeriods').value = PERIODS.map(p=>p.join('-')).join('\n');
   document.querySelectorAll('#themeRadios input').forEach(r => r.checked = (r.value===theme));
   document.querySelectorAll('#themeRadios label').forEach(x => x.classList.toggle('checked', x.querySelector('input').checked));
   openModal('settingsOverlay');
 }
 function saveSettings(){
+  let next;
+  try {
+    next = ScheduleContract.validatePeriods($('fPeriods').value.trim().split(/\r?\n/).map(line=>{
+      const [start,end,...extra]=line.trim().split(/\s*-\s*/);
+      if (extra.length) throw new Error('每行格式为 HH:mm-HH:mm');
+      return {start,end};
+    }));
+    if (regularCourses.some(c=>c.end>next.length)) throw new Error('已有课程超出新节数，请先调整课程');
+  } catch(error) { toast(error.message); return; }
+  PERIODS = next.map(p=>[p.start,p.end]);
+  datasetMetadata.parityEnabled = $('fParity').checked;
+  fillSelects();
   semesterStart = $('fSemStart').value || null;
   localStorage.setItem('schedule_semester', semesterStart || '');
-  closeModal('settingsOverlay'); render(); toast('设置已保存');
+  save(); closeModal('settingsOverlay'); render(); toast('设置已保存');
 }
 $('themeRadios').addEventListener('click', e => {
   const l = e.target.closest('label'); if (!l) return;
@@ -1030,7 +1056,7 @@ $('themeRadios').addEventListener('click', e => {
 
 /* ================= 导出 / 清空 / 示例 ================= */
 function exportData(){
-  const data = ScheduleContract.encode({...datasetMetadata, semesterStartDate: semesterStart}, regularCourses, exams);
+  const data = ScheduleContract.encode({...datasetMetadata, semesterStartDate: semesterStart, periods:PERIODS.map(([start,end])=>({start,end}))}, regularCourses, exams);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}));
   a.download = 'class-schedule.json';
@@ -1044,9 +1070,13 @@ async function importData(input){
   try {
     if (file.size > 4*1024*1024) throw new Error('JSON 文件超过 4 MB');
     const data = ScheduleContract.decode(await file.text());
+    const importedPeriods = data.periods || PERIODS.map(([start,end])=>({start,end}));
+    if (data.courses.some(c=>c.endPeriod>importedPeriods.length)) throw new Error('导入课程超出作息节数，请先调整每日作息');
     if (!confirm(`替换为 ${data.courses.length} 门课程、${data.exams.length} 场考试和 ${data.overrides.length} 条调休？`)) return;
     const converted = ScheduleContract.toWeb(data);
     regularCourses = converted.courses; exams = converted.exams; datasetMetadata = data;
+    PERIODS = importedPeriods.map(p=>[p.start,p.end]);
+    fillSelects();
     if ('semesterStartDate' in data) {
       semesterStart = data.semesterStartDate || null;
       localStorage.setItem('schedule_semester', semesterStart || '');
@@ -1103,8 +1133,8 @@ $('calendar').addEventListener('click', e => {
   if (cell && cell.dataset.date) openExamAdd(cell.dataset.date);
 });
 
-fillSelects();
 load();
+fillSelects();
 const now = new Date();
 calYear = now.getFullYear(); calMonth = now.getMonth();
 applyTheme();

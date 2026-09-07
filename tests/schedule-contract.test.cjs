@@ -49,3 +49,23 @@ test('automatic date view intersects explicit weeks, parity and full-day replace
   assert.deepEqual(contract.forDate(courses,[],'2026-09-07','2026-10-05'),[]);
   assert.throws(()=>contract.decode({courses:[],semesterStartDate:'2026-02-31'}));
 });
+
+test('event type, notes and disabled parity survive native and web exchange', () => {
+  const doc = contract.decode({courses:[{id:'c',name:'Math',day:1,start:1,end:2,week:'odd'}],
+    parityEnabled:false,exams:[{id:'e',subject:'社团',date:'2026-09-07',type:'EVENT',note:'带电脑'}]});
+  const web = contract.toWeb(doc);
+  const result = contract.encode(doc,web.courses,web.exams);
+  assert.equal(result.exams[0].type,'EVENT');
+  assert.equal(result.exams[0].note,'带电脑');
+  assert.equal(contract.forDate(web.courses,[],null,'2026-09-07',result.parityEnabled).length,1);
+  assert.throws(()=>contract.decode({exams:[{id:'x',subject:'bad',date:'2026-09-07',type:'other'}]}));
+});
+
+test('custom daily periods round trip and reject invalid or overlapping times', () => {
+  const periods = Array.from({length:13},(_,i)=>({start:String(i+6).padStart(2,'0')+':00',end:String(i+6).padStart(2,'0')+':45'}));
+  const doc = contract.decode({periods,courses:[{id:'late',name:'晚课',day:1,start:13,end:13}]});
+  const web = contract.toWeb(doc);
+  assert.deepEqual(contract.encode(doc,web.courses,web.exams).periods,periods);
+  assert.throws(()=>contract.validatePeriods([{start:'09:00',end:'10:00'},{start:'09:30',end:'11:00'}]));
+  assert.throws(()=>contract.decode({periods:periods.slice(0,12),courses:doc.courses}));
+});

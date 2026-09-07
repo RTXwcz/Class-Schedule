@@ -7,6 +7,8 @@ import com.kebiao.app.data.ScheduleExport
 import com.kebiao.app.data.ScheduleOverrideRecord
 import com.kebiao.app.data.ScheduleRepository
 import com.kebiao.app.domain.ScheduleResolver
+import com.kebiao.app.notifications.PeriodSchedule
+import com.kebiao.app.notifications.LessonPeriod
 import com.kebiao.app.domain.model.Course
 import com.kebiao.app.domain.model.ScheduleOverride
 import com.kebiao.app.domain.model.WeekRule
@@ -65,6 +67,8 @@ class McpToolRegistry(
     private val approvalQueue: McpApprovalQueue,
     private val writeConfirmation: suspend () -> Boolean,
     private val semesterStart: suspend () -> LocalDate?,
+    private val parityEnabled: suspend () -> Boolean = { true },
+    private val periods: suspend () -> List<LessonPeriod> = { PeriodSchedule.defaults },
 ) {
     private val writes = Mutex()
     private val resolver = ScheduleResolver()
@@ -113,15 +117,19 @@ class McpToolRegistry(
             "schedule.for_date" -> {
                 val date = date(args.string("date"))
                 val start = semesterStart()
+                val parity = parityEnabled()
+                val times = periods()
                 val override = snapshot.overrides.firstOrNull { it.date == date.toString() }
                 val effective = resolver.resolve(date, start, snapshot.courses.map { it.domain() }, snapshot.overrides.map {
                     ScheduleOverride(LocalDate.parse(it.date), it.replacementWeekday, it.note)
-                })
+                }, parityEnabled = parity)
                 val byId = snapshot.courses.associateBy { it.id }
                 buildJsonObject {
                     put("date", date.toString())
                     put("semesterStart", start?.toString()?.let(::JsonPrimitive) ?: JsonNull)
-                    put("weekParityKnown", start != null && !date.isBefore(start))
+                    put("parityEnabled", parity)
+                    put("periods", Json.parseToJsonElement(PeriodSchedule.encode(times)))
+                    put("weekParityKnown", parity && start != null && !date.isBefore(start))
                     put("effectiveWeekday", override?.replacementWeekday ?: date.dayOfWeek.value)
                     put("courses", JsonArray(effective.map { encode(byId.getValue(it.course.id)) }))
                     put("exams", JsonArray(snapshot.exams.filter { it.date == date.toString() }.map(::encode)))
@@ -145,14 +153,19 @@ class McpToolRegistry(
                     teacher = args.optionalString("teacher"), courseNote = args.optionalString("courseNote"),
                     weeks = (args["weeks"] as? JsonArray)?.map { (it as JsonPrimitive).intOrNull!! }.orEmpty())
                 record.domain()
-                Mutation("courses", id, snapshot.courses.find { it.id == id }?.let(::encode) ?: JsonNull, encode(record)) { store.upsertCourse(record) }
+                require(record.endPeriod <= periods().size) { "Course exceeds configured daily period count" }
+                Mutation("courses", id, snapshot.courses.find { it.id == id }?.let(::encode) ?: JsonNull, encode(record)) {
+                    require(record.endPeriod <= periods().size) { "Daily period count changed; review course periods" }
+                    store.upsertCourse(record)
+                }
             }
             "schedule.upsert_exam" -> {
                 val id = args.optionalString("id") ?: UUID.randomUUID().toString()
                 val examDate = date(args.string("date")).toString()
                 val time = args.optionalString("time")?.also { require(it.matches(Regex("\\d{2}:\\d{2}"))) { "time must be HH:mm" }; LocalTime.parse(it) }
                 val record = ScheduleExam(id, args.string("subject"), examDate, time, args.optionalString("building"),
-                    args.optionalString("room"), args.optionalString("locationNote"), source = "MCP")
+                    args.optionalString("room"), args.optionalString("locationNote"), source = "MCP",
+                    type = args.optionalString("type") ?: "EXAM", note = args.optionalString("note"))
                 Mutation("exams", id, snapshot.exams.find { it.id == id }?.let(::encode) ?: JsonNull, encode(record)) { store.upsertExam(record) }
             }
             "schedule.upsert_override" -> {
@@ -284,13 +297,13 @@ class McpToolRegistry(
         private val definitions = listOf(
             Definition("schedule.list", "Read the complete course, exam, and date override dataset."),
             Definition("schedule.list_courses", "Read complete course records including IDs, week rules, periods and locations."),
-            Definition("schedule.list_exams", "Read complete exam records including IDs, dates, times and locations."),
+            Definition("schedule.list_exams", "Read all dated items (EXAM and EVENT), including IDs, type, dates, times, locations and note."),
             Definition("schedule.list_overrides", "Read all date overrides and replacement weekdays."),
             Definition("schedule.for_date", "Read effective courses and exams on an ISO date, applying semester odd/even weeks and date overrides. If semester start is unset, odd/even courses cannot be resolved.", mapOf("date" to text("date")), listOf("date")),
-            Definition("schedule.upsert_course", "Create or fully replace one course. Omit id to create. Optional fields omitted on replacement are cleared. weeks is a list of semester weeks (empty means all); requires semester start to resolve. May require approval in the app.", location + courseDetails + mapOf("id" to text(), "name" to text(), "weekday" to number(7), "startPeriod" to number(12), "endPeriod" to number(12), "weekRule" to text(choices = listOf("ALL", "ODD", "EVEN"))), listOf("name", "weekday", "startPeriod", "endPeriod"), true),
+            Definition("schedule.upsert_course", "Create or fully replace one course. Periods must fit the daily timetable configured in the app (maximum 48). Omit id to create. Optional fields omitted on replacement are cleared. weeks is a list of semester weeks (empty means all); requires semester start to resolve. May require approval in the app.", location + courseDetails + mapOf("id" to text(), "name" to text(), "weekday" to number(7), "startPeriod" to number(48), "endPeriod" to number(48), "weekRule" to text(choices = listOf("ALL", "ODD", "EVEN"))), listOf("name", "weekday", "startPeriod", "endPeriod"), true),
             Definition("schedule.delete_course", "Delete a course by id. May require approval in the app.", mapOf("id" to text()), listOf("id"), true),
-            Definition("schedule.upsert_exam", "Create or fully replace one exam. Omit id to create. time is HH:mm. Optional omitted fields are cleared. May require approval in the app.", location + mapOf("id" to text(), "subject" to text(), "date" to text("date"), "time" to text()), listOf("subject", "date"), true),
-            Definition("schedule.delete_exam", "Delete an exam by id. May require approval in the app.", mapOf("id" to text()), listOf("id"), true),
+            Definition("schedule.upsert_exam", "Create or fully replace one dated item. type is EXAM (default) or EVENT. Both are stored in exams for compatibility. Omit id to create. time is HH:mm; omit for all-day. note is general text, separate from locationNote. Optional omitted fields are cleared. May require approval in the app.", location + mapOf("id" to text(), "subject" to text(), "date" to text("date"), "time" to text(), "type" to text(choices = listOf("EXAM", "EVENT")), "note" to text()), listOf("subject", "date"), true),
+            Definition("schedule.delete_exam", "Delete an exam or event by id. May require approval in the app.", mapOf("id" to text()), listOf("id"), true),
             Definition("schedule.upsert_override", "Set which weekday timetable applies to a date. The date's semester parity still applies. May require approval in the app.", mapOf("date" to text("date"), "replacementWeekday" to number(7), "note" to text()), listOf("date", "replacementWeekday"), true),
             Definition("schedule.delete_override", "Delete an override by ISO date. May require approval in the app.", mapOf("date" to text("date")), listOf("date"), true),
             Definition("schedule.clear", "Delete all courses, exams and date overrides. Always requires explicit approval in the app; no client argument can approve this operation.", write = true),

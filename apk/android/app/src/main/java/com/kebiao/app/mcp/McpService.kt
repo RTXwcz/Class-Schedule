@@ -59,6 +59,8 @@ class McpService : Service() {
             RepositoryScheduleStore(repository), approvals,
             writeConfirmation = { settings.settings.first().mcpWriteConfirmation },
             semesterStart = { settings.settings.first().semesterStartDate?.let(LocalDate::parse) },
+            parityEnabled = { settings.settings.first().parityEnabled },
+            periods = { settings.settings.first().periods },
         )
         ReminderCoordinator(applicationContext, repository, settings).start(scope)
         scope.launch {

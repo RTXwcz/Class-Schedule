@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.kebiao.app.notifications.LessonPeriod
+import com.kebiao.app.notifications.PeriodSchedule
 
 private val Context.appSettingsDataStore by preferencesDataStore(name = "app_settings")
 
@@ -24,6 +26,8 @@ data class AppSettings(
     val mcpWriteConfirmation: Boolean = true,
     val openAiEndpoint: String = "https://api.openai.com/v1/chat/completions",
     val openAiModel: String = "gpt-4o-mini",
+    val parityEnabled: Boolean = false,
+    val periods: List<LessonPeriod> = PeriodSchedule.defaults,
 )
 
 class AppSettingsStore(private val context: Context) {
@@ -40,6 +44,8 @@ class AppSettingsStore(private val context: Context) {
         val mcpWriteConfirmation = booleanPreferencesKey("mcp_write_confirmation")
         val openAiEndpoint = stringPreferencesKey("openai_endpoint")
         val openAiModel = stringPreferencesKey("openai_model")
+        val parityEnabled = booleanPreferencesKey("parity_enabled")
+        val periods = stringPreferencesKey("lesson_periods")
     }
 
     val settings: Flow<AppSettings> = context.appSettingsDataStore.data.map { p ->
@@ -56,6 +62,8 @@ class AppSettingsStore(private val context: Context) {
             mcpWriteConfirmation = p[Keys.mcpWriteConfirmation] ?: true,
             openAiEndpoint = p[Keys.openAiEndpoint] ?: "https://api.openai.com/v1/chat/completions",
             openAiModel = p[Keys.openAiModel] ?: "gpt-4o-mini",
+            parityEnabled = p[Keys.parityEnabled] ?: p.asMap().isNotEmpty(),
+            periods = p[Keys.periods]?.let(PeriodSchedule::decode) ?: PeriodSchedule.defaults,
         )
     }
 
@@ -74,8 +82,12 @@ class AppSettingsStore(private val context: Context) {
                 mcpWriteConfirmation = p[Keys.mcpWriteConfirmation] ?: true,
                 openAiEndpoint = p[Keys.openAiEndpoint] ?: "https://api.openai.com/v1/chat/completions",
                 openAiModel = p[Keys.openAiModel] ?: "gpt-4o-mini",
+                parityEnabled = p[Keys.parityEnabled] ?: p.asMap().isNotEmpty(),
+                periods = p[Keys.periods]?.let(PeriodSchedule::decode) ?: PeriodSchedule.defaults,
             )
             val next = transform(current)
+            p[Keys.periods] = PeriodSchedule.encode(next.periods)
+            p[Keys.parityEnabled] = next.parityEnabled
             p[Keys.theme] = next.theme
             if (next.semesterStartDate == null) p.remove(Keys.semesterStartDate) else p[Keys.semesterStartDate] = next.semesterStartDate
             p[Keys.reminderLeadMinutes] = next.reminderLeadMinutes.coerceIn(0, 120)

@@ -26,9 +26,11 @@ object ReminderPlanner {
         courses: List<Course>,
         overrides: List<ScheduleOverride>,
         leadMinutes: Long = 10,
-    ): PlannedReminder? = resolver.resolve(now.toLocalDate(), semesterStart, courses, overrides)
-        .asSequence().map { effective ->
-            val startsAt = effective.date.atTime(PeriodSchedule.start(effective.course.startPeriod)).atZone(now.zone)
+        parityEnabled: Boolean = true,
+        periods: List<LessonPeriod> = PeriodSchedule.defaults,
+    ): PlannedReminder? = resolver.resolve(now.toLocalDate(), semesterStart, courses, overrides, parityEnabled)
+        .asSequence().filter { it.course.endPeriod <= periods.size }.map { effective ->
+            val startsAt = effective.date.atTime(PeriodSchedule.start(effective.course.startPeriod, periods)).atZone(now.zone)
             PlannedReminder("${effective.course.id}@${effective.date}", effective, startsAt, startsAt.minusMinutes(leadMinutes))
         }.firstOrNull {
             it.key == key && it.triggerAt.toInstant().toEpochMilli() == expectedTriggerMillis &&
@@ -41,6 +43,8 @@ object ReminderPlanner {
         courses: List<Course>,
         overrides: List<ScheduleOverride>,
         count: Int = 3,
+        parityEnabled: Boolean = true,
+        periods: List<LessonPeriod> = PeriodSchedule.defaults,
     ): List<PlannedReminder> {
         require(count >= 0)
         if (courses.isEmpty() || count == 0) return emptyList()
@@ -48,13 +52,13 @@ object ReminderPlanner {
         val lastCourseWeek = semesterStart?.plusWeeks(courses.flatMap { it.weeks }.maxOrNull()?.toLong() ?: 0L)
         val lastException = listOfNotNull(now.toLocalDate(), semesterStart, lastCourseWeek, overrides.maxOfOrNull { it.date }).max()
         val end = lastException.plusWeeks(count.toLong() * 2)
-        val start = if (courses.none { it.weekRule == com.kebiao.app.domain.model.WeekRule.ALL && it.weeks.isEmpty() }) {
+        val start = if (courses.none { (!parityEnabled || it.weekRule == com.kebiao.app.domain.model.WeekRule.ALL) && it.weeks.isEmpty() }) {
             semesterStart?.coerceAtLeast(now.toLocalDate()) ?: return emptyList()
         } else now.toLocalDate()
         return generateSequence(start) { it.plusDays(1) }.takeWhile { !it.isAfter(end) }
             .flatMap { date ->
-                resolver.resolve(date, semesterStart, courses, overrides).asSequence().map { effective ->
-                    val startsAt = date.atTime(PeriodSchedule.start(effective.course.startPeriod)).atZone(now.zone)
+                resolver.resolve(date, semesterStart, courses, overrides, parityEnabled).asSequence().filter { it.course.endPeriod <= periods.size }.map { effective ->
+                    val startsAt = date.atTime(PeriodSchedule.start(effective.course.startPeriod, periods)).atZone(now.zone)
                     PlannedReminder("${effective.course.id}@$date", effective, startsAt, startsAt)
                 }
             }.filter { it.startsAt.isAfter(now) }.distinctBy { it.key }.take(count).toList()
@@ -69,6 +73,8 @@ object ReminderPlanner {
         horizonDays: Int = 14,
         includeDue: Boolean = false,
         deliveredKeys: Set<String> = emptySet(),
+        parityEnabled: Boolean = true,
+        periods: List<LessonPeriod> = PeriodSchedule.defaults,
     ): List<PlannedReminder> {
         require(leadMinutes >= 0) { "Reminder lead time must not be negative" }
         require(horizonDays >= 0) { "Reminder horizon must not be negative" }
@@ -76,8 +82,8 @@ object ReminderPlanner {
         return (0..horizonDays).asSequence()
             .map { now.toLocalDate().plusDays(it.toLong()) }
             .flatMap { date ->
-                resolver.resolve(date, semesterStart, courses, overrides).asSequence().mapNotNull { effective ->
-                    val startsAt = date.atTime(PeriodSchedule.start(effective.course.startPeriod)).atZone(now.zone)
+                resolver.resolve(date, semesterStart, courses, overrides, parityEnabled).asSequence().filter { it.course.endPeriod <= periods.size }.mapNotNull { effective ->
+                    val startsAt = date.atTime(PeriodSchedule.start(effective.course.startPeriod, periods)).atZone(now.zone)
                     val triggerAt = startsAt.minusMinutes(leadMinutes)
                     val key = "${effective.course.id}@$date"
                     val eligible = triggerAt.isAfter(now) || (includeDue && startsAt.isAfter(now))

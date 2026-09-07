@@ -5,5 +5,5 @@ import com.kebiao.app.ocr.ValidationIssue
 
 object ImportValidation {
     fun validate(draft: CourseDraft): List<ValidationIssue> = draft.validationErrors()
-    fun canPersist(drafts: List<CourseDraft>): Boolean = drafts.isNotEmpty() && drafts.all { it.validationErrors().isEmpty() && listOf(it.name, it.weekday, it.startPeriod, it.endPeriod, it.weekRule, it.building, it.room, it.locationNote, it.teacher, it.weeks, it.courseNote).all { field -> field.confirmed } }
+    fun canPersist(drafts: List<CourseDraft>, periodCount: Int = 48): Boolean = drafts.isNotEmpty() && drafts.all { it.validationErrors().isEmpty() && it.endPeriod.value in 1..periodCount && listOf(it.name, it.weekday, it.startPeriod, it.endPeriod, it.weekRule, it.building, it.room, it.locationNote, it.teacher, it.weeks, it.courseNote).all { field -> field.confirmed } }
 }

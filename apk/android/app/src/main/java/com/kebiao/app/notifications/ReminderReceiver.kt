@@ -28,7 +28,7 @@ class ReminderReceiver : BroadcastReceiver() {
                     val now = ZonedDateTime.now()
                     val plan = ReminderPlanner.currentReminder(key, intent.getLongExtra(EXTRA_TRIGGER, -1L), now,
                         snapshot.semesterStart, snapshot.courses, snapshot.overrides,
-                        snapshot.settings.reminderLeadMinutes.toLong())
+                        snapshot.settings.reminderLeadMinutes.toLong(), parityEnabled = snapshot.settings.parityEnabled, periods = snapshot.settings.periods)
                     if (snapshot.settings.notificationsEnabled && plan != null && ReminderScheduler(context).notificationsAllowed()) {
                         notifyOnce(context, plan)
                     }

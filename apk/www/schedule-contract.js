@@ -11,7 +11,7 @@
     const c = { ...value, weekday: value.weekday ?? value.day, startPeriod: value.startPeriod ?? value.start,
       endPeriod: value.endPeriod ?? value.end, weekRule: week(value.weekRule ?? value.week), weeks: value.weeks ?? [] };
     assert(typeof c.id === 'string' && c.id.trim() && typeof c.name === 'string' && c.name.trim(), '课程缺少 ID 或名称');
-    assert(integer(c.weekday, 1, 7) && integer(c.startPeriod, 1, 12) && integer(c.endPeriod, c.startPeriod, 12), '课程星期或节次无效');
+    assert(integer(c.weekday, 1, 7) && integer(c.startPeriod, 1, 48) && integer(c.endPeriod, c.startPeriod, 48), '课程星期或节次无效');
     assert(c.weekRule && Array.isArray(c.weeks) && c.weeks.every(w => integer(w, 1, 60)) && new Set(c.weeks).size === c.weeks.length, '课程周次无效');
     if (!c.building && !c.room && c.location && !c.locationNote) c.locationNote = c.location;
     ['day', 'start', 'end', 'week', 'location'].forEach(key => delete c[key]);
@@ -21,6 +21,9 @@
     assert(object(value) && typeof value.id === 'string' && value.id.trim() && typeof value.subject === 'string' && value.subject.trim(), '考试缺少 ID 或科目');
     assert(date(value.date) && (!value.time || /^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)), '考试日期或时间无效');
     const e = { ...value };
+    e.type = value.type ?? 'EXAM';
+    assert(['EXAM', 'EVENT'].includes(e.type), '考试或日程类型无效');
+    assert(e.note == null || typeof e.note === 'string', '备注必须为文本');
     if (!e.building && !e.room && e.location && !e.locationNote) e.locationNote = e.location;
     delete e.location;
     return e;
@@ -38,6 +41,10 @@
       }) };
     assert(integer(result.schemaVersion, 1, 2147483647), '数据版本无效');
     assert(doc.semesterStartDate == null || date(doc.semesterStartDate), '学期开始日期无效');
+    if ('periods' in doc) {
+      validatePeriods(doc.periods);
+      assert(result.courses.every(c => c.endPeriod <= doc.periods.length), '课程超出作息节数');
+    }
     for (const [collection, key] of [['courses', 'id'], ['exams', 'id'], ['overrides', 'date']]) {
       assert(new Set(result[collection].map(x => x[key])).size === result[collection].length, '存在重复记录');
     }
@@ -54,7 +61,7 @@
         weekday: c.day, startPeriod: c.start, endPeriod: c.end, weekRule: week(c.week) })),
       exams: exams.map(e => ({...e, ...(e.location !== location(e) ? {building:null,room:null,locationNote:e.location} : {})})) });
   }
-  function forDate(courses, overrides, semesterStart, targetDate) {
+  function forDate(courses, overrides, semesterStart, targetDate, parityEnabled = true) {
     assert(date(targetDate) && (!semesterStart || date(semesterStart)), '课表日期无效');
     const replacement = (overrides || []).find(o => o.date === targetDate);
     const weekday = replacement?.replacementWeekday ?? (new Date(targetDate).getUTCDay() || 7);
@@ -64,10 +71,20 @@
       const parity = week(c.week ?? c.weekRule);
       return (c.day ?? c.weekday) === weekday &&
         (!(c.weeks || []).length || (number !== null && c.weeks.includes(number))) &&
-        (parity === 'ALL' || (number !== null && (number % 2 === 1 ? 'ODD' : 'EVEN') === parity));
+        (!parityEnabled || parity === 'ALL' || (number !== null && (number % 2 === 1 ? 'ODD' : 'EVEN') === parity));
     });
   }
-  const api = { decode, toWeb, encode, forDate };
+  function validatePeriods(periods) {
+    assert(Array.isArray(periods) && periods.length >= 1 && periods.length <= 48, '每天节数须为 1 到 48');
+    let end = '';
+    periods.forEach((p, index) => {
+      assert(object(p) && /^([01]\d|2[0-3]):[0-5]\d$/.test(p.start) && /^([01]\d|2[0-3]):[0-5]\d$/.test(p.end), '第 '+(index+1)+' 节时间须为 HH:mm');
+      assert(p.start < p.end && p.start >= end, '作息时间须按先后排列、不重叠且不跨天');
+      end = p.end;
+    });
+    return periods;
+  }
+  const api = { decode, toWeb, encode, forDate, validatePeriods };
   if (typeof module !== 'undefined') module.exports = api;
   root.ScheduleContract = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

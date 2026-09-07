@@ -14,6 +14,7 @@ class ScheduleResolver {
         semesterStart: LocalDate?,
         courses: List<Course>,
         overrides: List<ScheduleOverride>,
+        parityEnabled: Boolean = true,
     ): List<EffectiveCourse> {
         val naturalWeekday = date.dayOfWeek.value
         val effectiveWeekday = overrides
@@ -38,7 +39,7 @@ class ScheduleResolver {
             .filter { course ->
                 when (course.weekRule) {
                     WeekRule.ALL -> true
-                    WeekRule.ODD, WeekRule.EVEN -> weekParity == course.weekRule
+                    WeekRule.ODD, WeekRule.EVEN -> !parityEnabled || weekParity == course.weekRule
                 }
             }
             .sortedWith(compareBy<Course> { it.startPeriod }.thenBy { it.endPeriod }.thenBy { it.name })

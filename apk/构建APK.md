@@ -4,9 +4,11 @@
 
 > 环境要求：**JDK 21** + **Android SDK（Platform 36）**。Capacitor 8 的 Android 模块使用 Java 21 编译目标。
 
+全新克隆还需 Node.js 22+：在 `apk/` 下执行 `npm ci` 和 `npm run sync`，生成被 Git 忽略的 Capacitor/Cordova 桥接目录，再运行 Gradle。
+
 ## 方式一：Android Studio（推荐，最简单）
 
-1. 安装 [Android Studio](https://developer.android.com/studio)，一路默认安装。
+1. 安装 [Android Studio](https://developer.android.com/studio)，并完成上述 npm 依赖安装及同步。
 2. 启动 Android Studio → **Open** → 选择本目录里的 `android` 文件夹。
 3. 首次打开会自动 Gradle 同步（联网下载依赖，约几分钟，耐心等右下角进度条结束）。
 4. 顶部菜单 **Build → Build App Bundle(s) / APK(s) → Build APK(s)**。
@@ -63,7 +65,17 @@ gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --console=plai
 
 验证结果见 `../docs/superpowers/verification/2026-09-07-native-final-verification.md`。
 
-## 关于签名（重要）
+## 发布签名
 
-- 当前交付是使用调试签名的 debug APK，可安装试用。
-- 商店发布前使用自己保管的 release keystore 构建并签名；本次未创建发布签名或商店版本。
+GitHub `v1.3.0` 提供 release 签名 APK。`assembleDebug` 仍生成开发测试包，二者签名不同，不能互相覆盖安装；先导出 JSON 再切换。
+
+发布构建从四个环境变量读取签名信息：`CLASS_SCHEDULE_KEYSTORE`、`CLASS_SCHEDULE_STORE_PASSWORD`、`CLASS_SCHEDULE_KEY_ALIAS`、`CLASS_SCHEDULE_KEY_PASSWORD`。未设置密钥时 `assembleRelease` 生成 unsigned APK。维护者必须检查签名后再发布。
+
+Windows 维护者可使用 `tools/build-release.ps1`：传入仓库外的 PKCS12 密钥和由 `Export-Clixml` 保存的 PSCredential 文件。脚本仅在构建进程环境中传递密码，结束后清除这些环境变量。凭据受 Windows 当前用户 DPAPI 保护，迁移机器前需要安全备份可恢复的密钥密码。
+
+```powershell
+./tools/build-release.ps1 -Keystore D:/Android/Signing/Class-Schedule/release.p12 `
+  -CredentialFile D:/Android/Signing/Class-Schedule/release.credentials.xml
+```
+
+已签名产物：`apk/android/app/build/outputs/apk/release/app-release.apk`。不要将签名密钥或密码提交到 Git。Fork 可使用自己的密钥签名安装；不同密钥之间切换时需备份数据并重新安装。

@@ -7,6 +7,18 @@ import kotlin.test.assertFails
 
 class JsonScheduleCodecTest {
     @Test
+    fun legacyExamsDefaultToExamAndEventsRoundTripAllFields() {
+        val legacy = JsonScheduleCodec.decode("""{"exams":[{"id":"old","subject":"数学","date":"2026-09-10"}]}""")
+        assertEquals("EXAM", legacy.exams.single().type)
+        assertEquals(null, legacy.exams.single().note)
+        val event = ScheduleExam("event", "读书会", "2026-09-12", "15:30", "图书馆", "302", "东门",
+            source = "MANUAL", createdAtEpochMillis = 10, updatedAtEpochMillis = 20, type = "EVENT", note = "带上阅读笔记")
+        val original = legacy.copy(exams = legacy.exams + event)
+        assertEquals(original, JsonScheduleCodec.decode(JsonScheduleCodec.encode(original)))
+        assertFails { JsonScheduleCodec.decode("""{"exams":[{"id":"bad","subject":"计划","date":"2026-09-10","type":"COURSE"}]}""") }
+    }
+
+    @Test
     fun decodesLegacyWebFieldsAndSplitsLocation() {
         val json = """
             {

@@ -46,8 +46,9 @@ object ScheduleWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Responsive(setOf(DpSize(180.dp, 110.dp), DpSize(250.dp, 180.dp)))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val courses = WidgetSnapshotProvider.load(context)
-        updateAppWidgetState(context, id) { WidgetSnapshotProvider.write(it, courses) }
+        val snapshot = ReminderCoordinator.snapshot(context)
+        val courses = WidgetSnapshotProvider.upcoming(java.time.ZonedDateTime.now(), snapshot).map { it.course }
+        updateAppWidgetState(context, id) { WidgetSnapshotProvider.write(it, courses, snapshot.settings.periods) }
         provideContent {
             val state = currentState<Preferences>()
             val count = (state[WidgetKeys.count] ?: 0).coerceIn(0, 3)

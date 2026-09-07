@@ -170,6 +170,6 @@ class CourseTableParser {
         val match = Regex("(?:第)?([0-9]{1,2})(?:\\s*(?:-|~|～|—|–|至|到)\\s*([0-9]{1,2}))?\\s*节").find(text) ?: return null
         val start = match.groupValues[1].toIntOrNull() ?: return null
         val end = match.groupValues[2].toIntOrNull() ?: start
-        return (start to end).takeIf { start in 1..12 && end in start..12 }
+        return (start to end).takeIf { start in 1..48 && end in start..48 }
     }
 }

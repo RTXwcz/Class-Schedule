@@ -49,6 +49,8 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { Text("设置") }
+        item { LicenseSection() }
+        item { PeriodSettingsSection(viewModel) }
         item {
             Row(Modifier.fillMaxWidth()) {
                 listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (value, label) ->
@@ -62,8 +64,12 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
         item {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("单双周计算")
-                    Text("以学期开始日期为第 1 周（单周）。之后每隔 7 天切换一次：第 1、3、5 周是单周，第 2、4、6 周是双周。未设置学期开始日期或日期早于开学时，单双周课程暂不列入当天课表。")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("启用单双周", Modifier.weight(1f))
+                        Switch(state.settings.parityEnabled, { enabled -> viewModel.updateSettings { it.copy(parityEnabled = enabled) } })
+                    }
+                    Text(if (state.settings.parityEnabled) "第 1、3、5 周为单周，第 2、4、6 周为双周。请设置学期开始日期；未设置时不显示单双周课程。"
+                        else "已关闭单双周，课程按每周显示。原有单双周信息保留，重新开启后恢复。明确的周次范围仍按学期日期计算。")
                     OutlinedTextField(
                         value = semesterDate,
                         onValueChange = { semesterDate = it },

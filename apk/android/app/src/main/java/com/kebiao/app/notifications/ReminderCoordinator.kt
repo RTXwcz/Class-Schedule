@@ -66,14 +66,14 @@ class ReminderCoordinator(
             val now = ZonedDateTime.now()
             if (snapshot.settings.notificationsEnabled) {
                 scheduler.schedule(now, snapshot.semesterStart, snapshot.courses, snapshot.overrides,
-                    snapshot.settings.reminderLeadMinutes.toLong())
+                    snapshot.settings.reminderLeadMinutes.toLong(), parityEnabled = snapshot.settings.parityEnabled, periods = snapshot.settings.periods)
             } else {
                 scheduler.cancelAll()
             }
             val upcoming = WidgetSnapshotProvider.upcoming(now, snapshot)
             // Let a zero-minute reminder finish before rebuilding alarms at this course's start.
             scheduler.scheduleWidgetRefresh(upcoming.firstOrNull()?.startsAt?.plusMinutes(1))
-            WidgetSnapshotProvider.update(context, upcoming.map { it.course })
+            WidgetSnapshotProvider.update(context, upcoming.map { it.course }, snapshot.settings.periods)
         }
     }
 }

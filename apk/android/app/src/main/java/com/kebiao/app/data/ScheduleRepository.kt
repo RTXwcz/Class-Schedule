@@ -45,6 +45,8 @@ class ScheduleRepository(private val database: AppDatabase) {
             ScheduleExam(
                 id = entity.id,
                 subject = entity.subject,
+                type = entity.type,
+                note = entity.note,
                 date = entity.date,
                 time = entity.time,
                 building = entity.building,
@@ -148,7 +150,7 @@ class ScheduleRepository(private val database: AppDatabase) {
                 entity.teacher, decodeWeeks(entity.weeksJson), entity.courseNote)
         },
         exams = dao.getExams().map { entity ->
-            ScheduleExam(entity.id, entity.subject, entity.date, entity.time, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis)
+            ScheduleExam(entity.id, entity.subject, entity.date, entity.time, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis, entity.type, entity.note)
         },
         overrides = dao.getOverrides().map { entity -> ScheduleOverrideRecord(entity.date, entity.replacementWeekday, entity.note) },
     ) }
@@ -187,7 +189,8 @@ class ScheduleRepository(private val database: AppDatabase) {
     }
 
     private fun validateExam(exam: ScheduleExam) {
-        require(exam.id.isNotBlank() && exam.subject.isNotBlank()) { "考试名称不能为空" }
+        require(exam.id.isNotBlank() && exam.subject.isNotBlank()) { "考试或日程名称不能为空" }
+        require(exam.type in setOf("EXAM", "EVENT")) { "类型必须为考试或日程" }
         LocalDate.parse(exam.date)
         exam.time?.takeIf { it.isNotBlank() }?.let(LocalTime::parse)
     }
@@ -217,6 +220,8 @@ class ScheduleRepository(private val database: AppDatabase) {
 
     private fun ScheduleExam.toEntity(export: ScheduleExport) = ExamEntity(
         id = id,
+        type = type,
+        note = note,
         subject = subject,
         date = date,
         time = time,

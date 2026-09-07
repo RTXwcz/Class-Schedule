@@ -51,7 +51,7 @@ fun ScheduleApp(viewModel: AppViewModel) {
             viewModel.clearError()
         }
     }
-    val tabs = listOf("课表", "考试", "导入导出", "设置")
+    val tabs = listOf("课表", "安排", "录入", "设置")
     val icons = listOf(Icons.Default.CalendarMonth, Icons.Default.Event, Icons.Default.ImportExport, Icons.Default.Settings)
 
     val dark = state.settings.theme == "dark" || (state.settings.theme == "system" && isSystemInDarkTheme())

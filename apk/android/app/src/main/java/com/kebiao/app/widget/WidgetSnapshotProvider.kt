@@ -10,6 +10,7 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.updateAppWidgetState
 import com.kebiao.app.domain.model.EffectiveCourse
 import com.kebiao.app.notifications.PeriodSchedule
+import com.kebiao.app.notifications.LessonPeriod
 import com.kebiao.app.notifications.ReminderCoordinator
 import com.kebiao.app.notifications.ReminderPlanner
 import com.kebiao.app.notifications.ReminderSnapshot
@@ -18,24 +19,26 @@ import java.time.ZonedDateTime
 object WidgetSnapshotProvider {
     fun upcoming(now: ZonedDateTime, snapshot: ReminderSnapshot) = ReminderPlanner.upcoming(
         now, snapshot.semesterStart, snapshot.courses, snapshot.overrides,
+        parityEnabled = snapshot.settings.parityEnabled,
+        periods = snapshot.settings.periods,
     )
 
     suspend fun load(context: Context): List<EffectiveCourse> =
         upcoming(ZonedDateTime.now(), ReminderCoordinator.snapshot(context)).map { it.course }
 
-    fun format(courses: List<EffectiveCourse>): String = courses.take(3).joinToString("\n") { effective ->
+    fun format(courses: List<EffectiveCourse>, periods: List<LessonPeriod> = PeriodSchedule.defaults): String = courses.take(3).joinToString("\n") { effective ->
         val course = effective.course
         val location = listOfNotNull(course.building, course.room, course.locationNote).filter(String::isNotBlank).joinToString(" ")
-        listOf("${effective.date.monthValue}/${effective.date.dayOfMonth} ${PeriodSchedule.start(course.startPeriod)}",
+        listOf("${effective.date.monthValue}/${effective.date.dayOfMonth} ${PeriodSchedule.start(course.startPeriod, periods)}",
             course.name, location).filter(String::isNotBlank).joinToString(" · ")
     }
 
-    internal fun write(prefs: MutablePreferences, courses: List<EffectiveCourse>) {
+    internal fun write(prefs: MutablePreferences, courses: List<EffectiveCourse>, periods: List<LessonPeriod> = PeriodSchedule.defaults) {
         val upcoming = courses.take(3)
         prefs[WidgetKeys.count] = upcoming.size
         upcoming.forEachIndexed { index, effective ->
             val course = effective.course
-            prefs[WidgetKeys.time(index)] = "${effective.date.monthValue}/${effective.date.dayOfMonth} ${PeriodSchedule.start(course.startPeriod)}"
+            prefs[WidgetKeys.time(index)] = "${effective.date.monthValue}/${effective.date.dayOfMonth} ${PeriodSchedule.start(course.startPeriod, periods)}"
             prefs[WidgetKeys.name(index)] = course.name
             prefs[WidgetKeys.location(index)] = listOfNotNull(course.building, course.room, course.locationNote)
                 .filter(String::isNotBlank).joinToString(" ").ifBlank { "地点未填写" }
@@ -48,12 +51,12 @@ object WidgetSnapshotProvider {
         prefs.remove(stringPreferencesKey("schedule_lines"))
     }
 
-    suspend fun update(context: Context, courses: List<EffectiveCourse>) {
+    suspend fun update(context: Context, courses: List<EffectiveCourse>, periods: List<LessonPeriod> = PeriodSchedule.defaults) {
         val manager = GlanceAppWidgetManager(context)
         val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, ScheduleWidgetReceiver::class.java))
         ids.forEach { appWidgetId ->
             val id = manager.getGlanceIdBy(appWidgetId)
-            updateAppWidgetState(context, id) { write(it, courses) }
+            updateAppWidgetState(context, id) { write(it, courses, periods) }
             ScheduleWidget.update(context, id)
         }
     }
