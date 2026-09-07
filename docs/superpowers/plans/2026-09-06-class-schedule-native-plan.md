@@ -6,7 +6,9 @@
 
 **Architecture:** 原生 Android 使用 Compose UI、ViewModel、Room 和 DataStore；课程生效规则集中在 `EffectiveScheduleResolver`，供界面、通知、Widget 和 MCP 复用。PWA 保持现有实现，通过 JSON 数据契约与原生应用交换数据。
 
-**Tech Stack:** Kotlin 2.1.21、Android Gradle Plugin 8.13.0、Jetpack Compose、Room 2.7.2、DataStore 1.1.7、Glance 1.1.1、Android AlarmManager、ONNX Runtime Android、PaddleOCR PP-OCRv6 ONNX。
+**Tech Stack:** Kotlin 2.4.0、Android Gradle Plugin 8.13.0 + R8 9.1.43、Jetpack Compose、Room 2.7.2、DataStore 1.1.7、Glance 1.1.1、Android AlarmManager、ONNX Runtime Android、PaddleOCR PP-OCRv6 ONNX、官方 MCP Kotlin SDK 0.15.0。
+
+**2026-09-07 状态：** 下方 Task 1-7 的逐步测试/逐任务提交条目保留为原始计划，不作为实际运行日志。原生基础、数据迁移、提醒、小组件、可下载 OCR、OpenAI 导入、MCP 与 Web JSON 交换均已实现；最终验收与限制见 [验证报告](../verification/2026-09-07-native-final-verification.md)。真实手机准确率/省电策略和商店发布不属于已完成验收。
 
 **Spec:** `docs/superpowers/specs/2026-09-06-class-schedule-native-design.md`
 
@@ -21,7 +23,7 @@
 - 本地 OCR 必须由用户主动选择后下载，识别结果逐项确认后写入。
 - MCP 默认关闭，仅允许本机/局域网并使用固定可轮换 Token。
 - 每个可测试的领域行为先写失败测试，再写最小实现。
-- 当前环境没有 JDK；所有构建命令必须记录实际结果，不得声称未运行的构建通过。
+- 当前已安装 JDK 21、Android Studio 和 Android SDK 36；构建与测试通过 ASCII junction `D:\kebiao-build` 运行，结果须以实际日志为准。
 
 ---
 
@@ -176,8 +178,8 @@
 
 - [ ] All tasks have a commit and passing available tests.
 - [x] Native app launches without WebView as the primary UI. Verified on Android 15 emulator; see `2026-09-07-persistence-device-verification.md`.
-- [ ] Domain rules drive UI, notifications, Widget, and MCP consistently.
-- [ ] OCR and OpenAI results require review before persistence.
-- [ ] MCP is disabled by default and authenticated when enabled.
-- [ ] Web version remains available and can exchange JSON with native app.
-- [ ] APK build and device verification results are recorded honestly.
+- [x] Domain rules drive UI, notifications, Widget, and MCP consistently.
+- [x] OCR and OpenAI results require review before persistence.
+- [x] MCP is disabled by default and authenticated when enabled.
+- [x] Web version remains available and can exchange JSON with native app.
+- [x] APK build and device verification results are recorded honestly.

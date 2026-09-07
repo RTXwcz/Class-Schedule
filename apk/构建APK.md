@@ -1,6 +1,6 @@
 # 构建安卓 APK 步骤
 
-本目录 `apk/` 是一个完整的 Capacitor 8 安卓工程，网页代码已打包进 `www/` 并同步到 `android/`。只需在装有 Android 开发环境的电脑上执行一次构建即可得到 `.apk`。
+`android/` 现在是 Kotlin + Jetpack Compose 原生应用，使用 Room 保存课表、DataStore 保存设置。保留 Capacitor 构建依赖及 `www/` 网页副本，但主界面不使用 WebView。Web/PWA 仍由仓库根目录独立提供。
 
 > 环境要求：**JDK 21** + **Android SDK（Platform 36）**。Capacitor 8 的 Android 模块使用 Java 21 编译目标。
 
@@ -16,7 +16,7 @@
 ## 方式二：命令行
 
 ```bash
-# 1. 安装 JDK 17+ 并设置 JAVA_HOME
+# 1. 安装 JDK 21 并设置 JAVA_HOME
 # 2. 安装 Android SDK cmdline-tools，然后：
 sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 sdkmanager --licenses     # 一路输入 y 同意
@@ -36,26 +36,34 @@ gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --console=plai
 
 产物同样在 `apk/android/app/build/outputs/apk/debug/app-debug.apk`。
 
-## 需要自定义的三处
+## 原生配置
 
 | 项目 | 位置 | 当前值 |
 |---|---|---|
-| 应用名称 | `capacitor.config.json` → `appName` | 我的课表 |
-| 包名（唯一标识） | `capacitor.config.json` → `appId` | com.kebiao.app |
+| 应用名称 | `android/app/src/main/res/values/strings.xml` | 我的课表 |
+| 包名（唯一标识） | `android/app/build.gradle` → `applicationId` | com.kebiao.app |
 | 应用图标 / 启动图 | `assets/icon.png`（1024×1024）、`assets/splash.png`（2732×2732） | 占位图（渐变+表格纹样） |
 
-- 改**应用名**：改 `capacitor.config.json` 后执行 `npx cap sync android`。
-- 改**包名**：改 `capacitor.config.json` 后重新执行 `npx cap add android`（会重建 android 目录）。
+- 原生代码位于 `android/app/src/main/java/com/kebiao/app/`，直接修改后运行 Gradle。
+- 修改包名需要同时检查 Kotlin namespace、Manifest 组件及测试包名。
 - 换**正式图标**：把两张源图替换后执行 `npx capacitor-assets generate --android`。
 
-## 修改网页代码后重新打包
+## Web 副本与原生数据交换
 
-1. 编辑根目录的 `课表.html`（主程序）。
-2. 同步到工程：`cp "课表.html" "apk/www/index.html"`。
-3. `cd apk && npx cap sync android`。
-4. 重新 Build APK。
+1. Web 主文件是根目录 `课表.html`，数据契约是 `schedule-contract.js`；将两者分别同步到 `www/index.html`、`www/schedule-contract.js`。
+2. Web 与原生通过完整 JSON 导入导出交换课程、考试、调休和数据集元数据。Web 自动视图应用周次及调休，其他筛选模式保留模板查看行为。
+3. 网页修改不会改变 Compose 原生界面，不需要重建 Android 工程。
+
+## OCR 与 MCP
+
+- APK 不包含 OCR 权重；用户点击下载后将 PP-OCRv6 tiny（6.3 MB）或 small（31.2 MB）存入应用私有目录，校验后可断网识别。所有导入字段须确认后保存。
+- OpenAI 模式需要自填 API Key，可配置兼容的 Chat Completions 图像接口地址和模型。
+- MCP 默认关闭。在设置中开启后，Agent 使用页面显示的 IPv4 地址和 `/mcp` 路径，携带 `Authorization: Bearer <Token>`，通过 Streamable HTTP 连接。Token 可复制和轮换；清空数据始终需在应用确认。
+- 设置中的学期日期定义第 1 周；之后每 7 天递增。单双周和明确周次共同限制课程，调休仅替换该日期的星期课程。
+
+验证结果见 `../docs/superpowers/verification/2026-09-07-native-final-verification.md`。
 
 ## 关于签名（重要）
 
-- `debug` 版用的是调试签名，**只能自用**，部分手机/安全软件可能提示风险，属正常。
-- 若要**长期使用或分发**，需要生成正式签名（release keystore）再打 `release` 包。需要的话我可以给出 release 签名的具体配置步骤。
+- 当前交付是使用调试签名的 debug APK，可安装试用。
+- 商店发布前使用自己保管的 release keystore 构建并签名；本次未创建发布签名或商店版本。
