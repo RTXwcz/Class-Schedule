@@ -2,8 +2,8 @@ package com.kebiao.app.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFails
 
 class JsonScheduleCodecTest {
     @Test
@@ -65,7 +65,7 @@ class JsonScheduleCodecTest {
     }
 
     @Test
-    fun ignoresMalformedRecordsButKeepsValidRecords() {
+    fun rejectsMalformedRecordsInsteadOfSilentlyDiscardingThem() {
         val json = """
             {"courses":[
               {"id":"ok","name":"物理","weekday":3,"startPeriod":1,"endPeriod":2},
@@ -74,11 +74,14 @@ class JsonScheduleCodecTest {
             ],"exams":[{"id":"ok-exam","subject":"物理","date":"2026-10-01"},{"subject":"缺 id"}]}
         """
 
-        val export = JsonScheduleCodec.decode(json)
+        assertFails { JsonScheduleCodec.decode(json) }
+    }
 
-        assertEquals(listOf("ok"), export.courses.map { it.id })
-        assertEquals(listOf("ok-exam"), export.exams.map { it.id })
-        assertNotNull(export.updatedAt)
+    @Test
+    fun rejectsUnknownDocumentsAndInvalidSectionTypes() {
+        listOf("{}", "{\"courses\":null}", "{\"courses\":{}}", "[{\"unrelated\":true}]").forEach { json ->
+            assertFails { JsonScheduleCodec.decode(json) }
+        }
     }
 
     @Test

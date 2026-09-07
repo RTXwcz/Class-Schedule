@@ -12,8 +12,13 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -26,13 +31,22 @@ import com.kebiao.app.ui.timetable.TimetableScreen
 
 @Composable
 fun ScheduleApp(viewModel: AppViewModel) {
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val state by viewModel.uiState.collectAsState()
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let { message ->
+            snackbar.showSnackbar(message)
+            viewModel.clearError()
+        }
+    }
     val tabs = listOf("课表", "考试", "导入导出", "设置")
     val icons = listOf(Icons.Default.CalendarMonth, Icons.Default.Event, Icons.Default.ImportExport, Icons.Default.Settings)
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Scaffold(
+                snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
                     NavigationBar {
                         tabs.forEachIndexed { index, label ->

@@ -76,9 +76,10 @@ object JsonScheduleCodec {
         if (legacyArray != null) return decodeLegacyArray(legacyArray)
         val root = document as? JsonObject
             ?: throw IllegalArgumentException("Schedule JSON must be an object or legacy array")
-        val courses = root["courses"].asArray().mapNotNull(::decodeCourse)
-        val exams = root["exams"].asArray().mapNotNull(::decodeExam)
-        val overrides = root["overrides"].asArray().mapNotNull(::decodeOverride)
+        require(listOf("courses", "exams", "overrides").any { it in root }) { "JSON 中缺少课程、考试或调休数据" }
+        val courses = root["courses"].asArray().mapIndexed { index, item -> requireNotNull(decodeCourse(item)) { "第 ${index + 1} 条课程无效，未导入任何数据" } }
+        val exams = root["exams"].asArray().mapIndexed { index, item -> requireNotNull(decodeExam(item)) { "第 ${index + 1} 条考试无效，未导入任何数据" } }
+        val overrides = root["overrides"].asArray().mapIndexed { index, item -> requireNotNull(decodeOverride(item)) { "第 ${index + 1} 条调休无效，未导入任何数据" } }
         return ScheduleExport(
             schemaVersion = root.int("schemaVersion") ?: 1,
             datasetId = root.string("datasetId")?.takeIf(String::isNotBlank) ?: UUID.randomUUID().toString(),
@@ -92,20 +93,22 @@ object JsonScheduleCodec {
     }
 
     private fun decodeLegacyArray(array: JsonArray): ScheduleExport {
-        val courses = array.mapNotNull(::decodeCourse)
-        if (courses.isNotEmpty()) {
-            return ScheduleExport(
-                datasetId = UUID.randomUUID().toString(),
-                updatedAt = Instant.now().toString(),
-                courses = courses,
-                source = "WEB_IMPORT",
-            )
+        val courses = mutableListOf<ScheduleCourse>()
+        val exams = mutableListOf<ScheduleExam>()
+        array.forEachIndexed { index, item ->
+            val course = decodeCourse(item)
+            val exam = if (course == null) decodeExam(item) else null
+            when {
+                course != null -> courses.add(course)
+                exam != null -> exams.add(exam)
+                else -> error("第 ${index + 1} 条数据无效，未导入任何数据")
+            }
         }
-        val exams = array.mapNotNull(::decodeExam)
         return ScheduleExport(
             datasetId = UUID.randomUUID().toString(),
             updatedAt = Instant.now().toString(),
             exams = exams,
+            courses = courses,
             source = "WEB_IMPORT",
         )
     }
@@ -217,7 +220,8 @@ object JsonScheduleCodec {
     private fun normalizeWeekRule(value: String?): String = when (value?.trim()?.lowercase()) {
         "odd", "single", "单", "单周" -> "ODD"
         "even", "double", "双", "双周" -> "EVEN"
-        else -> "ALL"
+        null, "", "all", "每周", "全部", "全周" -> "ALL"
+        else -> error("无法识别的周次：$value")
     }
 
     private fun splitLocation(location: String?): Pair<String?, String?> {
@@ -230,7 +234,11 @@ object JsonScheduleCodec {
         } else null to null
     }
 
-    private fun JsonElement?.asArray(): JsonArray = this as? JsonArray ?: JsonArray(emptyList())
+    private fun JsonElement?.asArray(): JsonArray = when (this) {
+        null -> JsonArray(emptyList())
+        is JsonArray -> this
+        else -> error("课程、考试和调休必须为 JSON 数组")
+    }
     private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
     private fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull
     private fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?.longOrNull

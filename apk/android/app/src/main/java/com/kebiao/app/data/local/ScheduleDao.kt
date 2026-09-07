@@ -26,6 +26,24 @@ interface ScheduleDao {
     @Query("SELECT * FROM schedule_overrides ORDER BY date")
     suspend fun getOverrides(): List<ScheduleOverrideEntity>
 
+    @Query("SELECT * FROM courses WHERE id = :id")
+    suspend fun getCourse(id: String): CourseEntity?
+
+    @Query("SELECT * FROM exams WHERE id = :id")
+    suspend fun getExam(id: String): ExamEntity?
+
+    @Query("DELETE FROM courses WHERE id = :id")
+    suspend fun deleteCourse(id: String)
+
+    @Query("DELETE FROM exams WHERE id = :id")
+    suspend fun deleteExam(id: String)
+
+    @Query("DELETE FROM schedule_overrides WHERE date = :date")
+    suspend fun deleteOverride(date: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertNewCourses(courses: List<CourseEntity>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCourses(courses: List<CourseEntity>)
 

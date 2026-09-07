@@ -175,7 +175,7 @@
 ## Completion Checklist
 
 - [ ] All tasks have a commit and passing available tests.
-- [ ] Native app launches without WebView as the primary UI.
+- [x] Native app launches without WebView as the primary UI. Verified on Android 15 emulator; see `2026-09-07-persistence-device-verification.md`.
 - [ ] Domain rules drive UI, notifications, Widget, and MCP consistently.
 - [ ] OCR and OpenAI results require review before persistence.
 - [ ] MCP is disabled by default and authenticated when enabled.

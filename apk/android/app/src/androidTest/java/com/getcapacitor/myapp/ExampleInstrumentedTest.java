@@ -21,6 +21,9 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
-        assertEquals("com.getcapacitor.app", appContext.getPackageName());
+        assertEquals("com.kebiao.app", appContext.getPackageName());
+        android.content.Intent launcher = appContext.getPackageManager().getLaunchIntentForPackage(appContext.getPackageName());
+        assertNotNull(launcher);
+        assertEquals("com.kebiao.app.MainActivity", launcher.getComponent().getClassName());
     }
 }

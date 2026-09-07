@@ -6,7 +6,8 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.room.Room
+import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -29,13 +30,15 @@ import com.kebiao.app.ui.ScheduleApp
 class MainActivity : ComponentActivity() {
     private var mcpServer: McpServer? = null
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST)
         }
-        val database = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "schedule.db").build()
+        val database = AppDatabase.getInstance(applicationContext)
         val repository = ScheduleRepository(database)
         val settingsStore = AppSettingsStore(applicationContext)
         val viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {

@@ -2,6 +2,7 @@ package com.kebiao.app.ui.calendar
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.kebiao.app.data.ScheduleExam
 import com.kebiao.app.ui.AppViewModel
+import java.time.LocalDate
+import java.time.LocalTime
 
 @Composable
 fun ExamCalendarScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues()) {
@@ -36,7 +39,7 @@ fun ExamCalendarScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
     var showEditor by remember { mutableStateOf(false) }
 
     Scaffold(
-        modifier = Modifier.padding(padding),
+        modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         floatingActionButton = {
             FloatingActionButton(onClick = { editing = null; showEditor = true }) { Text("+") }
         },
@@ -86,14 +89,16 @@ private fun ExamEditorDialog(
     var building by remember(initial) { mutableStateOf(initial?.building.orEmpty()) }
     var room by remember(initial) { mutableStateOf(initial?.room.orEmpty()) }
     var note by remember(initial) { mutableStateOf(initial?.locationNote.orEmpty()) }
+    val validDate = runCatching { LocalDate.parse(date.trim()) }.isSuccess
+    val validTime = time.isBlank() || runCatching { LocalTime.parse(time.trim()) }.isSuccess
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "添加考试" else "编辑考试") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(subject, { subject = it }, label = { Text("科目") }, singleLine = true)
-                OutlinedTextField(date, { date = it }, label = { Text("日期 YYYY-MM-DD") }, singleLine = true)
-                OutlinedTextField(time, { time = it }, label = { Text("时间") }, singleLine = true)
+                OutlinedTextField(date, { date = it }, label = { Text("日期 YYYY-MM-DD") }, isError = date.isNotBlank() && !validDate, singleLine = true)
+                OutlinedTextField(time, { time = it }, label = { Text("时间 HH:mm") }, isError = !validTime, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(building, { building = it }, label = { Text("教学楼") }, modifier = Modifier.weight(1f), singleLine = true)
                     OutlinedTextField(room, { room = it }, label = { Text("教室") }, modifier = Modifier.weight(1f), singleLine = true)
@@ -117,7 +122,7 @@ private fun ExamEditorDialog(
                         updatedAtEpochMillis = System.currentTimeMillis(),
                     ),
                 )
-            }) { Text("保存") }
+            }, enabled = subject.isNotBlank() && validDate && validTime) { Text("保存") }
         },
         dismissButton = {
             Row {

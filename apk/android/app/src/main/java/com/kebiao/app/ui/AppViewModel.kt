@@ -8,6 +8,7 @@ import com.kebiao.app.data.ScheduleExam
 import com.kebiao.app.data.ScheduleExport
 import com.kebiao.app.data.ScheduleOverrideRecord
 import com.kebiao.app.data.ScheduleRepository
+import com.kebiao.app.data.toScheduleCourse
 import com.kebiao.app.data.settings.AppSettings
 import com.kebiao.app.data.settings.AppSettingsStore
 import com.kebiao.app.domain.ScheduleResolver
@@ -62,39 +63,37 @@ class AppViewModel(
     fun selectDate(date: LocalDate) = updateState { copy(selectedDate = date) }
 
     fun addCourse(course: Course) {
-        updateState { copy(courses = courses.filterNot { it.id == course.id } + course, errorMessage = null) }
-        persist()
+        mutate({ copy(courses = courses.filterNot { it.id == course.id } + course, errorMessage = null) }) {
+            upsertCourse(course.toScheduleCourse())
+        }
     }
 
     fun updateCourse(course: Course) = addCourse(course)
 
     fun deleteCourse(id: String) {
-        updateState { copy(courses = courses.filterNot { it.id == id }, errorMessage = null) }
-        persist()
+        mutate({ copy(courses = courses.filterNot { it.id == id }, errorMessage = null) }) { deleteCourse(id) }
     }
 
     fun addExam(exam: ScheduleExam) {
-        updateState { copy(exams = exams.filterNot { it.id == exam.id } + exam, errorMessage = null) }
-        persist()
+        mutate({ copy(exams = exams.filterNot { it.id == exam.id } + exam, errorMessage = null) }) { upsertExam(exam) }
     }
 
     fun updateExam(exam: ScheduleExam) = addExam(exam)
 
     fun deleteExam(id: String) {
-        updateState { copy(exams = exams.filterNot { it.id == id }, errorMessage = null) }
-        persist()
+        mutate({ copy(exams = exams.filterNot { it.id == id }, errorMessage = null) }) { deleteExam(id) }
     }
 
     fun addOverride(override: ScheduleOverride) {
-        updateState {
+        mutate({
             copy(overrides = overrides.filterNot { it.date == override.date } + override, errorMessage = null)
+        }) {
+            upsertOverride(ScheduleOverrideRecord(override.date.toString(), override.replacementWeekday, override.note))
         }
-        persist()
     }
 
     fun deleteOverride(date: LocalDate) {
-        updateState { copy(overrides = overrides.filterNot { it.date == date }, errorMessage = null) }
-        persist()
+        mutate({ copy(overrides = overrides.filterNot { it.date == date }, errorMessage = null) }) { deleteOverride(date.toString()) }
     }
 
     fun updateSemesterStartDate(date: LocalDate?) {
@@ -117,19 +116,34 @@ class AppViewModel(
         overrides = uiState.value.overrides,
     )
 
-    fun importJson(json: String): Boolean {
-        return runCatching {
-            val export = JsonScheduleCodec.decode(json)
+    fun importJson(json: String) {
+        if (uiState.value.importBusy) return
+        val export = runCatching { JsonScheduleCodec.decode(json) }.getOrElse { error ->
+            updateState { copy(errorMessage = error.message ?: "导入失败", importStatus = null) }
+            return
+        }
+        if (repository == null) {
             updateState {
                 copy(
                     courses = export.courses.mapNotNull(::toDomainCourse),
                     exams = export.exams,
                     overrides = export.overrides.mapNotNull(::toDomainOverride),
                     errorMessage = null,
+                    importStatus = "导入成功",
                 )
             }
-            persist()
-        }.onFailure { error -> updateState { copy(errorMessage = error.message ?: "导入失败") } }.isSuccess
+            return
+        }
+        updateState { copy(importBusy = true, importStatus = "正在导入", errorMessage = null) }
+        viewModelScope.launch {
+            try {
+                repository.replaceAll(export)
+                updateState { copy(importStatus = "导入成功") }
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) {
+                updateState { copy(errorMessage = error.message ?: "导入失败", importStatus = null) }
+            } finally { updateState { copy(importBusy = false) } }
+        }
     }
 
     fun exportJson(): String = JsonScheduleCodec.encode(snapshot())
@@ -187,10 +201,21 @@ class AppViewModel(
         }
     }
 
-    private fun persist() {
-        val repository = repository ?: return
-        val snapshot = snapshot()
-        viewModelScope.launch { repository.replaceAll(snapshot) }
+    private fun mutate(inMemory: AppUiState.() -> AppUiState, operation: suspend ScheduleRepository.() -> Unit) {
+        val store = repository
+        if (store == null) {
+            updateState(inMemory)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                store.operation()
+                clearError()
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) {
+                updateState { copy(errorMessage = error.message ?: "保存失败") }
+            }
+        }
     }
 
     private fun snapshot(): ScheduleExport = ScheduleExport(

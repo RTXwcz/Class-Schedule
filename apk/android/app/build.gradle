@@ -67,6 +67,7 @@ dependencies {
     implementation "androidx.datastore:datastore-preferences:1.1.7"
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1"
     debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
     coreLibraryDesugaring libs.android.tools.desugar
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
@@ -74,6 +75,8 @@ dependencies {
     testImplementation 'org.jetbrains.kotlin:kotlin-test-junit:2.1.21'
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    androidTestImplementation platform('androidx.compose:compose-bom:2025.08.00')
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
     implementation project(':capacitor-cordova-android-plugins')
 }
 

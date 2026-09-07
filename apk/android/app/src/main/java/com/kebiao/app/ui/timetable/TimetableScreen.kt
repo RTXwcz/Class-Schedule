@@ -1,8 +1,13 @@
 package com.kebiao.app.ui.timetable
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +27,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -34,7 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import com.kebiao.app.domain.model.Course
+import com.kebiao.app.domain.model.EffectiveCourse
 import com.kebiao.app.domain.model.WeekRule
 import com.kebiao.app.ui.AppViewModel
 import java.time.DayOfWeek
@@ -50,7 +59,7 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
     val formatter = remember { DateTimeFormatter.ofPattern("MM/dd") }
 
     Scaffold(
-        modifier = Modifier.padding(padding),
+        modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         floatingActionButton = {
             FloatingActionButton(onClick = { editorCourse = null; showEditor = true }) { Text("+") }
         },
@@ -65,12 +74,17 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
                 TextButton(onClick = { viewModel.selectDate(state.selectedDate.plusWeeks(1)) }) { Text("下一周") }
             }
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+                modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())
+                    .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                Column(Modifier.width(36.dp)) {
+                    Spacer(Modifier.height(44.dp))
+                    (1..12).forEach { period -> Text("$period", Modifier.height(76.dp).padding(top = 6.dp), style = MaterialTheme.typography.labelMedium) }
+                }
                 (0..6).forEach { offset ->
                     val date = selectedMonday.plusDays(offset.toLong())
-                    DayColumn(date, viewModel, formatter) { course -> editorCourse = course; showEditor = true }
+                    DayColumn(date, viewModel.effectiveCourses(date), formatter) { course -> editorCourse = course; showEditor = true }
                 }
             }
         }
@@ -89,11 +103,10 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
 @Composable
 private fun DayColumn(
     date: LocalDate,
-    viewModel: AppViewModel,
+    courses: List<EffectiveCourse>,
     formatter: DateTimeFormatter,
     onCourseClick: (Course) -> Unit,
 ) {
-    val courses = viewModel.effectiveCourses(date)
     val dayLabel = when (date.dayOfWeek.value) {
         1 -> "周一"
         2 -> "周二"
@@ -103,28 +116,34 @@ private fun DayColumn(
         6 -> "周六"
         else -> "周日"
     }
-    Column(modifier = Modifier.width(148.dp)) {
-        Text("$dayLabel ${date.format(formatter)}", modifier = Modifier.padding(6.dp))
-        (1..12).forEach { period ->
-            val course = courses.firstOrNull { it.course.startPeriod == period }
-            if (course != null) {
+    val laneEnds = mutableListOf<Int>()
+    val placed = courses.sortedWith(compareBy<EffectiveCourse> { it.course.startPeriod }.thenBy { it.course.endPeriod }.thenBy { it.course.id }).map { course ->
+        val lane = laneEnds.indexOfFirst { end -> end < course.course.startPeriod }.let { if (it < 0) laneEnds.size else it }
+        if (lane == laneEnds.size) laneEnds.add(course.course.endPeriod) else laneEnds[lane] = course.course.endPeriod
+        course to lane
+    }
+    Column(modifier = Modifier.width((148 * laneEnds.size.coerceAtLeast(1)).dp)) {
+        Text("$dayLabel ${date.format(formatter)}", modifier = Modifier.height(44.dp).padding(6.dp), maxLines = 1)
+        Box(Modifier.fillMaxWidth().height((12 * 76).dp)) {
+            (0..11).forEach { period ->
+                HorizontalDivider(Modifier.offset(y = (period * 76).dp), color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            placed.forEach { (course, lane) ->
                 val span = course.course.endPeriod - course.course.startPeriod + 1
                 Card(
-                    modifier = Modifier.fillMaxWidth().height((span * 52).dp).padding(vertical = 2.dp),
+                    modifier = Modifier.offset(x = (lane * 148).dp, y = ((course.course.startPeriod - 1) * 76).dp)
+                        .width(148.dp).height((span * 76).dp).padding(2.dp),
                     onClick = { onCourseClick(course.course) },
-                    colors = CardDefaults.cardColors(containerColor = if (course.hasConflict) CardDefaults.cardColors().containerColor else CardDefaults.cardColors().containerColor),
+                    shape = RoundedCornerShape(6.dp),
+                    colors = CardDefaults.cardColors(),
                 ) {
-                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(course.course.name)
-                        Text("第${course.course.startPeriod}-${course.course.endPeriod}节")
+                    Column(modifier = Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(course.course.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("第${course.course.startPeriod}-${course.course.endPeriod}节 · ${weekRuleLabel(course.course.weekRule)}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
                         val location = listOfNotNull(course.course.building, course.course.room).joinToString(" ")
-                        if (location.isNotBlank()) Text(location)
-                        course.course.locationNote?.takeIf { it.isNotBlank() }?.let { Text(it) }
-                        Text(weekRuleLabel(course.course.weekRule))
+                        if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-            } else {
-                Spacer(modifier = Modifier.fillMaxWidth().height(52.dp).padding(vertical = 2.dp))
             }
         }
     }

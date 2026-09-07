@@ -2,6 +2,8 @@
 
 日期：2026-09-07。
 
+后续数据竞争修复和真实 Android 测试结果见 [原生数据写入与设备验证](2026-09-07-persistence-device-verification.md)。本文件保留图片导入阶段的验证边界。
+
 ## 本轮实现
 
 - 原生导入页通过 Android 文件选择器选择 JPG、PNG、WebP；发送前展示原图、目标 API 地址和模型。

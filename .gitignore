@@ -3,6 +3,7 @@ apk/node_modules/
 
 # Android / Gradle generated files
 apk/android/.gradle/
+apk/android/.kotlin/
 apk/android/build/
 apk/android/app/build/
 apk/android/.idea/

@@ -1,6 +1,7 @@
 package com.kebiao.app.mcp
 
 import com.kebiao.app.data.ScheduleExport
+import com.kebiao.app.data.ScheduleCourse
 import java.util.UUID
 
 class InMemoryTokenStore : McpTokenStore {
@@ -13,4 +14,5 @@ class InMemoryScheduleStore : ScheduleStore {
     var value = ScheduleExport()
     override suspend fun snapshot(): ScheduleExport = value
     override suspend fun replaceAll(export: ScheduleExport) { value = export }
+    override suspend fun upsertCourse(course: ScheduleCourse) { value = value.copy(courses = value.courses.filterNot { it.id == course.id } + course) }
 }

@@ -9,6 +9,8 @@ import com.kebiao.app.domain.model.Course
 import com.kebiao.app.domain.model.WeekRule
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
+import java.time.LocalTime
 
 class ScheduleRepository(private val database: AppDatabase) {
     private val dao = database.scheduleDao()
@@ -41,6 +43,12 @@ class ScheduleRepository(private val database: AppDatabase) {
     }
 
     suspend fun replaceAll(export: ScheduleExport) {
+        export.courses.forEach(::validateCourse)
+        export.exams.forEach(::validateExam)
+        export.overrides.forEach(::validateOverride)
+        require(export.courses.map { it.id }.distinct().size == export.courses.size) { "课程 ID 重复" }
+        require(export.exams.map { it.id }.distinct().size == export.exams.size) { "考试 ID 重复" }
+        require(export.overrides.map { it.date }.distinct().size == export.overrides.size) { "调休日期重复" }
         database.withTransaction {
             dao.deleteAllCourses()
             dao.deleteAllExams()
@@ -53,11 +61,51 @@ class ScheduleRepository(private val database: AppDatabase) {
 
     suspend fun appendCourses(courses: List<ScheduleCourse>) {
         database.withTransaction {
-            dao.insertCourses(courses.map { it.toEntity(ScheduleExport(source = "OPENAI")) })
+            courses.forEach(::validateCourse)
+            dao.insertNewCourses(courses.map { it.toEntity(ScheduleExport(source = "OPENAI")) })
         }
     }
 
-    suspend fun snapshot(): ScheduleExport = ScheduleExport(
+    suspend fun upsertCourse(course: ScheduleCourse) {
+        validateCourse(course)
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            val previous = dao.getCourse(course.id)
+            val saved = course.copy(
+                createdAtEpochMillis = previous?.createdAtEpochMillis?.takeIf { it > 0 }
+                    ?: course.createdAtEpochMillis.takeIf { it > 0 } ?: now,
+                updatedAtEpochMillis = now,
+            )
+            dao.insertCourses(listOf(saved.toEntity(ScheduleExport(source = "NATIVE"))))
+        }
+    }
+
+    suspend fun deleteCourse(id: String) = dao.deleteCourse(id)
+
+    suspend fun upsertExam(exam: ScheduleExam) {
+        validateExam(exam)
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            val previous = dao.getExam(exam.id)
+            val saved = exam.copy(
+                createdAtEpochMillis = previous?.createdAtEpochMillis?.takeIf { it > 0 }
+                    ?: exam.createdAtEpochMillis.takeIf { it > 0 } ?: now,
+                updatedAtEpochMillis = now,
+            )
+            dao.insertExams(listOf(saved.toEntity(ScheduleExport(source = "NATIVE"))))
+        }
+    }
+
+    suspend fun deleteExam(id: String) = dao.deleteExam(id)
+
+    suspend fun upsertOverride(record: ScheduleOverrideRecord) {
+        validateOverride(record)
+        dao.insertOverrides(listOf(record.toEntity()))
+    }
+
+    suspend fun deleteOverride(date: String) = dao.deleteOverride(date)
+
+    suspend fun snapshot(): ScheduleExport = database.withTransaction { ScheduleExport(
         source = "NATIVE",
         courses = dao.getCourses().map { entity ->
             ScheduleCourse(entity.id, entity.name, entity.weekday, entity.startPeriod, entity.endPeriod, entity.weekRule, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis)
@@ -66,7 +114,22 @@ class ScheduleRepository(private val database: AppDatabase) {
             ScheduleExam(entity.id, entity.subject, entity.date, entity.time, entity.building, entity.room, entity.locationNote, entity.source, entity.createdAtEpochMillis, entity.updatedAtEpochMillis)
         },
         overrides = dao.getOverrides().map { entity -> ScheduleOverrideRecord(entity.date, entity.replacementWeekday, entity.note) },
-    )
+    ) }
+
+    private fun validateCourse(course: ScheduleCourse) {
+        Course(course.id, course.name, course.weekday, course.startPeriod, course.endPeriod, WeekRule.valueOf(course.weekRule))
+    }
+
+    private fun validateExam(exam: ScheduleExam) {
+        require(exam.id.isNotBlank() && exam.subject.isNotBlank()) { "考试名称不能为空" }
+        LocalDate.parse(exam.date)
+        exam.time?.takeIf { it.isNotBlank() }?.let(LocalTime::parse)
+    }
+
+    private fun validateOverride(record: ScheduleOverrideRecord) {
+        LocalDate.parse(record.date)
+        require(record.replacementWeekday in 1..7) { "目标星期必须为 1 到 7" }
+    }
 
     private fun ScheduleCourse.toEntity(export: ScheduleExport) = CourseEntity(
         id = id,
@@ -119,3 +182,8 @@ class ScheduleRepository(private val database: AppDatabase) {
         )
     }.getOrNull()
 }
+
+fun Course.toScheduleCourse() = ScheduleCourse(
+    id, name, weekday, startPeriod, endPeriod, weekRule.name, building, room, locationNote,
+    source, createdAtEpochMillis, updatedAtEpochMillis,
+)

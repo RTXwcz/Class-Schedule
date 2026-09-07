@@ -33,6 +33,7 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
     var json by remember { mutableStateOf(viewModel.exportJson()) }
     var status by remember { mutableStateOf<String?>(null) }
     var selectedImage by remember { mutableStateOf<Uri?>(null) }
+    var confirmJson by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> selectedImage = uri }
     state.importDrafts?.let { drafts ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -56,6 +57,15 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
             dismissButton = { TextButton(onClick = { selectedImage = null }) { Text("取消") } },
         )
     }
+    if (confirmJson) {
+        AlertDialog(
+            onDismissRequest = { confirmJson = false },
+            title = { Text("替换当前课表") },
+            text = { Text("将替换现有的 ${state.courses.size} 门课程、${state.exams.size} 场考试和 ${state.overrides.size} 条调休。") },
+            confirmButton = { TextButton(onClick = { confirmJson = false; status = null; viewModel.importJson(json) }) { Text("替换并导入") } },
+            dismissButton = { TextButton(onClick = { confirmJson = false }) { Text("取消") } },
+        )
+    }
     Column(
         modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -76,7 +86,7 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
             minLines = 12,
         )
         Button(onClick = { json = viewModel.exportJson(); status = "已生成当前数据" }) { Text("生成导出 JSON") }
-        Button(onClick = { status = if (viewModel.importJson(json)) "导入成功" else "导入失败" }) { Text("导入 JSON") }
+        Button(onClick = { confirmJson = true }, enabled = !state.importBusy && json.isNotBlank()) { Text("导入 JSON") }
         TextButton(onClick = { json = ""; status = null }) { Text("清空编辑框") }
         status?.let { Text(it) }
         state.errorMessage?.let {

@@ -4,15 +4,18 @@ import com.kebiao.app.data.ScheduleCourse
 import com.kebiao.app.data.ScheduleExport
 import com.kebiao.app.data.ScheduleRepository
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 
 interface ScheduleStore {
     suspend fun snapshot(): ScheduleExport
     suspend fun replaceAll(export: ScheduleExport)
+    suspend fun upsertCourse(course: ScheduleCourse)
 }
 
 class RepositoryScheduleStore(private val repository: ScheduleRepository) : ScheduleStore {
     override suspend fun snapshot(): ScheduleExport = repository.snapshot()
     override suspend fun replaceAll(export: ScheduleExport) = repository.replaceAll(export)
+    override suspend fun upsertCourse(course: ScheduleCourse) = repository.upsertCourse(course)
 }
 
 data class McpResult(val success: Boolean, val errorCode: String? = null, val data: Map<String, Any?> = emptyMap())
@@ -45,8 +48,7 @@ class McpToolRegistry(
     suspend fun handleWrite(tool: String, params: Map<String, String>, token: String): McpResult {
         if (!tokenStore.isValid(token)) return McpResult(false, "unauthorized")
         if (writeConfirmation && params["confirmed"] != "true") return McpResult(false, "confirmation_required")
-        val snapshot = store.snapshot()
-        return when (tool) {
+        return try { when (tool) {
             "schedule.add_course" -> {
                 val course = ScheduleCourse(
                     id = params["id"] ?: UUID.randomUUID().toString(),
@@ -60,14 +62,20 @@ class McpToolRegistry(
                     locationNote = params["locationNote"],
                     source = "MCP",
                 )
-                store.replaceAll(snapshot.copy(courses = snapshot.courses + course))
+                store.upsertCourse(course)
                 McpResult(true)
             }
             "schedule.clear" -> {
-                store.replaceAll(snapshot.copy(courses = emptyList(), exams = emptyList(), overrides = emptyList()))
+                store.replaceAll(ScheduleExport())
                 McpResult(true)
             }
             else -> McpResult(false, "unknown_tool")
+        } } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (invalid: IllegalArgumentException) {
+            McpResult(false, "invalid_arguments")
+        } catch (failure: Exception) {
+            McpResult(false, "storage_error")
         }
     }
 }
