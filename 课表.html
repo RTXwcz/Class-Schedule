@@ -322,6 +322,8 @@
     <div class="btn-group" id="calendarActions" style="display:none;">
       <button class="btn btn-primary" onclick="openExamAdd()">＋ 添加考试</button>
     </div>
+    <button class="btn btn-ghost" onclick="document.getElementById('jsonImport').click()">导入 JSON</button>
+    <input id="jsonImport" type="file" accept="application/json,.json" hidden onchange="importData(this)">
     <button class="btn btn-ghost" onclick="exportData()">⇩ 导出</button>
     <button class="btn btn-danger" onclick="clearAll()">清空</button>
   </header>
@@ -493,6 +495,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="./schedule-contract.js"></script>
 <script>
 /* ================= 基础数据 ================= */
 const PERIODS = [
@@ -533,6 +536,7 @@ let editingId = null;            // 课程编辑中的 id
 let examEditingId = null;        // 考试编辑中的 id
 let regularCourses = [];
 let exams = [];                  // { id, subject, date, time, location }
+let datasetMetadata = {};
 let calYear, calMonth;           // 当前显示的月份
 
 /* ================= 工具 ================= */
@@ -630,11 +634,14 @@ function todayInfo(){
 function save(){
   localStorage.setItem('schedule_regular_v1', JSON.stringify(regularCourses));
   localStorage.setItem('schedule_exams_v1', JSON.stringify(exams));
+  datasetMetadata = ScheduleContract.encode(datasetMetadata, regularCourses, exams);
+  localStorage.setItem('schedule_dataset_v1', JSON.stringify(datasetMetadata));
 }
 function valid(c){ return c && c.name && c.day && c.start; }
 function validExam(e){ return e && e.subject && e.date; }
 function load(){
   try {
+    datasetMetadata = JSON.parse(localStorage.getItem('schedule_dataset_v1') || '{}');
     regularCourses = JSON.parse(localStorage.getItem('schedule_regular_v1')||'[]').filter(valid);
     exams = JSON.parse(localStorage.getItem('schedule_exams_v1')||'[]').filter(validExam);
     if (!regularCourses.length){
@@ -714,7 +721,14 @@ function render(){
   const isDark = resolveTheme()==='dark';
   const rh = rowH();
   const byDay = {1:[],2:[],3:[],4:[],5:[],6:[],7:[]};
-  shown.forEach(c => byDay[c.day].push(c));
+  if (weekFilter === 'auto') {
+    const [year, month, day] = thisMonday().split('-').map(Number);
+    for (let d=1; d<=7; d++) {
+      const date = new Date(year, month-1, day+d-1);
+      byDay[d] = ScheduleContract.forDate(regularCourses, datasetMetadata.overrides, semesterStart,
+        fmtDate(date.getFullYear(), date.getMonth()+1, date.getDate()));
+    }
+  } else shown.forEach(c => byDay[c.day].push(c));
 
   for (let d=1; d<=7; d++){
     const body = bodies[d-1];
@@ -1016,25 +1030,29 @@ $('themeRadios').addEventListener('click', e => {
 
 /* ================= 导出 / 清空 / 示例 ================= */
 function exportData(){
-  if (view==='calendar'){
-    const data = JSON.stringify(exams, null, 2);
-    const blob = new Blob([data], {type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = '考试安排.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast('已导出 ' + exams.length + ' 场考试');
-  } else {
-    const data = JSON.stringify(regularCourses, null, 2);
-    const blob = new Blob([data], {type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = '课表数据.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast('已导出 ' + regularCourses.length + ' 门课');
-  }
+  const data = ScheduleContract.encode({...datasetMetadata, semesterStartDate: semesterStart}, regularCourses, exams);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}));
+  a.download = 'class-schedule.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('完整课表已导出');
+}
+async function importData(input){
+  const file = input.files[0]; input.value = '';
+  if (!file) return;
+  try {
+    if (file.size > 4*1024*1024) throw new Error('JSON 文件超过 4 MB');
+    const data = ScheduleContract.decode(await file.text());
+    if (!confirm(`替换为 ${data.courses.length} 门课程、${data.exams.length} 场考试和 ${data.overrides.length} 条调休？`)) return;
+    const converted = ScheduleContract.toWeb(data);
+    regularCourses = converted.courses; exams = converted.exams; datasetMetadata = data;
+    if ('semesterStartDate' in data) {
+      semesterStart = data.semesterStartDate || null;
+      localStorage.setItem('schedule_semester', semesterStart || '');
+    }
+    save(); render(); renderCalendar(); toast('完整课表已导入');
+  } catch(error){ toast(error.message || '导入失败'); }
 }
 function clearAll(){
   if (view==='calendar'){

@@ -1,8 +1,9 @@
-const CACHE = 'schedule-pwa-v1';
+const CACHE = 'schedule-pwa-v2';
 const ASSETS = [
   './',
   './index.html',
   './课表.html',
+  './schedule-contract.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
