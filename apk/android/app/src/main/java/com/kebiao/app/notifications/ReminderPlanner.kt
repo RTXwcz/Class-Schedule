@@ -28,7 +28,11 @@ object ReminderPlanner {
         leadMinutes: Long = 10,
         parityEnabled: Boolean = true,
         periods: List<LessonPeriod> = PeriodSchedule.defaults,
-    ): PlannedReminder? = resolver.resolve(now.toLocalDate(), semesterStart, courses, overrides, parityEnabled)
+    ): PlannedReminder? {
+        // A class just after midnight can have its reminder on the previous date.
+        val courseDate = key.substringAfterLast('@', "").let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return null
+        if (courseDate.isBefore(now.toLocalDate()) || courseDate.isAfter(now.plusMinutes(leadMinutes).toLocalDate())) return null
+        return resolver.resolve(courseDate, semesterStart, courses, overrides, parityEnabled)
         .asSequence().filter { it.course.endPeriod <= periods.size }.map { effective ->
             val startsAt = effective.date.atTime(PeriodSchedule.start(effective.course.startPeriod, periods)).atZone(now.zone)
             PlannedReminder("${effective.course.id}@${effective.date}", effective, startsAt, startsAt.minusMinutes(leadMinutes))
@@ -36,6 +40,7 @@ object ReminderPlanner {
             it.key == key && it.triggerAt.toInstant().toEpochMilli() == expectedTriggerMillis &&
                 !now.isBefore(it.triggerAt) && now.isBefore(if (leadMinutes == 0L) it.startsAt.plusMinutes(1) else it.startsAt)
         }
+    }
 
     fun upcoming(
         now: ZonedDateTime,

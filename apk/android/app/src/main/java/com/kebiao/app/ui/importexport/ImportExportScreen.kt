@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -21,6 +22,12 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedButton
 import com.kebiao.app.ui.timetable.CourseEditorDialog
 import com.kebiao.app.ui.calendar.ExamEditorDialog
+import com.kebiao.app.ui.components.ProductHeader
+import com.kebiao.app.ui.components.EntryAction
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Event
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
@@ -40,7 +47,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues()) {
+fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues(), onConfigure: () -> Unit = {}) {
     val state by viewModel.uiState.collectAsState()
     var json by remember { mutableStateOf(viewModel.exportJson()) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -135,9 +142,8 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
         modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("录入你的安排", style = MaterialTheme.typography.headlineMedium)
-        Text("从一门课开始，也可以一次导入整张课表。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ProductHeader("添加你的安排", "填一门课，或把整张课表交给识别", "录入与备份")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("手动填写", "图片识别", "数据备份").forEach { option ->
                 FilterChip(selected = mode == option, onClick = { mode = option }, label = { Text(option) })
             }
@@ -146,12 +152,9 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
             listOf(Triple("COURSE", "添加课程", "选择星期与节次，填写教师和上课地点"),
                 Triple("EXAM", "添加考试", "记录考试日期、时间与考场"),
                 Triple("EVENT", "添加日程", "讲座、社团、待办或其他日期安排")).forEach { (type, title, description) ->
-                OutlinedCard(onClick = { manualType = type }, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(title, style = MaterialTheme.typography.titleLarge)
-                        Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                EntryAction(if (type == "COURSE") Icons.Outlined.MenuBook else if (type == "EXAM") Icons.Outlined.School else Icons.Outlined.Event,
+                    title, description, { manualType = type },
+                    tone = if (type == "COURSE") MaterialTheme.colorScheme.primaryContainer else if (type == "EXAM") MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer)
             }
             Text("手动填写无需下载模型，也无需配置 API。", style = MaterialTheme.typography.bodySmall)
         }
@@ -166,6 +169,7 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
             Text("选择课表图片 · OpenAI")
         }
         if (!viewModel.hasOpenAiKey()) Text("请先在设置中配置 API Key")
+        OutlinedButton(onClick = onConfigure) { Text("设置识别方式") }
         Text("识别完成后可以逐项校对；没有图片时可切换到手动填写。", style = MaterialTheme.typography.bodySmall)
         }
         if (state.importBusy) LinearProgressIndicator(Modifier.fillMaxWidth())

@@ -36,6 +36,27 @@ class PaddleOcrDeviceTest {
     }
 
     @Test
+    fun rotatedJpegUsesExifOrientationBeforeRecognition() = runBlocking {
+        val manager = OcrModelManager(context)
+        assumeTrue("Requires previously installed tiny model", manager.isInstalled(OcrModelManager.ModelId.TINY))
+        val original = Bitmap.createBitmap(1100, 240, Bitmap.Config.ARGB_8888)
+        val file = java.io.File(context.cacheDir, "ocr-exif-${java.util.UUID.randomUUID()}.jpg")
+        try {
+            val canvas = Canvas(original)
+            canvas.drawColor(Color.WHITE)
+            canvas.drawText("高等数学  教学楼 301", 40f, 140f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 64f })
+            val rotated = Bitmap.createBitmap(original, 0, 0, original.width, original.height, android.graphics.Matrix().apply { postRotate(-90f) }, true)
+            try { file.outputStream().use { rotated.compress(Bitmap.CompressFormat.JPEG, 95, it) } } finally { rotated.recycle() }
+            androidx.exifinterface.media.ExifInterface(file).apply {
+                setAttribute(androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION, androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90.toString())
+                saveAttributes()
+            }
+            val text = PaddleOcrEngine(context, OcrModelManager.ModelId.TINY, manager).recognize(android.net.Uri.fromFile(file)).joinToString { it.text }
+            assertTrue(text, text.contains("高等数学") && text.contains("301"))
+        } finally { original.recycle(); file.delete() }
+    }
+
+    @Test
     fun cancelledSmallDownloadNeverActivates() = runBlocking {
         val manager = OcrModelManager(context)
         assumeFalse("Preserve a previously installed small model", manager.isInstalled(OcrModelManager.ModelId.SMALL))

@@ -24,7 +24,7 @@ jobs:
       - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - run: npm ci && npm run sync
         working-directory: apk
-      - run: node --test tests/schedule-contract.test.cjs
+      - run: node --test tests/*.test.cjs
       - uses: gradle/actions/setup-gradle@v4
       - run: bash gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon
         working-directory: apk/android

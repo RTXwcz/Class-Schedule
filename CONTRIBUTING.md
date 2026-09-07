@@ -12,12 +12,12 @@
 
 ```powershell
 # 仓库根目录
-node --test tests/schedule-contract.test.cjs
+node --test tests/*.test.cjs
 cd apk/android
 ./gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
-设备测试使用 Android 模拟器或手机执行 `:app:connectedDebugAndroidTest`。OCR 的显式下载测试会下载模型；已有模型时取消测试可能按条件跳过。
+设备测试使用匹配架构的 Android 手机。x86_64 模拟器的本地 UI 验证使用 `-PlocalUiQa=true` 构建 debug 与 AndroidTest 包；该选项会拒绝 release 任务，测试包不可上传发布。OCR 的显式下载测试会下载模型；已有模型时取消测试可能按条件跳过。
 
 ## 提交信息
 

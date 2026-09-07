@@ -1,130 +1,76 @@
 package com.kebiao.app.ui.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.kebiao.app.notifications.LessonPeriod
 import com.kebiao.app.notifications.PeriodSchedule
 import com.kebiao.app.ui.AppViewModel
+import com.kebiao.app.ui.components.*
+import java.time.LocalTime
 
 @Composable
 fun PeriodSettingsSection(viewModel: AppViewModel) {
     val state by viewModel.uiState.collectAsState()
-    var expanded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     val periods = state.settings.periods
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("每日作息", style = MaterialTheme.typography.titleMedium)
-            Text("每天 ${periods.size} 节 · ${periods.first().start}—${periods.last().end}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("课表、上课提醒与桌面小组件共用这份时间表。", style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { editing = true }) { Text("编辑作息") }
-                TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起时间" else "查看时间") }
-            }
-            if (expanded) periods.forEachIndexed { index, period ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("第 ${index + 1} 节")
-                    Text("${period.start}—${period.end}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+    SettingsGroup("每日作息", "课程卡片、提醒和小组件使用同一份时间表。") {
+        Text("${periods.size} 节课", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("${periods.first().start} — ${periods.last().end}", style = MaterialTheme.typography.bodyLarge)
+            TextButton(onClick = { editing = true }) { Text("编辑作息") }
         }
     }
-    if (editing) PeriodEditorDialog(
-        initial = periods,
-        minimumPeriods = state.courses.maxOfOrNull { it.endPeriod } ?: 1,
-        onDismiss = { editing = false },
-        onSave = { viewModel.updatePeriodSchedule(it); editing = false },
-    )
+    if (editing) PeriodEditorDialog(periods, state.courses.maxOfOrNull { it.endPeriod } ?: 1, { editing = false }, {
+        viewModel.updatePeriodSchedule(it); editing = false
+    })
 }
 
 @Composable
-private fun PeriodEditorDialog(
-    initial: List<LessonPeriod>,
-    minimumPeriods: Int,
-    onDismiss: () -> Unit,
-    onSave: (List<LessonPeriod>) -> Unit,
-) {
+private fun PeriodEditorDialog(initial: List<LessonPeriod>, minimumPeriods: Int, onDismiss: () -> Unit, onSave: (List<LessonPeriod>) -> Unit) {
     var drafts by remember { mutableStateOf(initial) }
-    var count by remember { mutableStateOf(initial.size.toString()) }
+    var pickCount by remember { mutableStateOf(false) }
+    var count by remember { mutableIntStateOf(initial.size) }
     var error by remember { mutableStateOf<String?>(null) }
-    fun applyCount(): Boolean {
-        val desired = count.toIntOrNull()
-        if (desired == null || desired !in 1..PeriodSchedule.MAX_PERIODS) {
-            error = "每天节数须为 1 到 ${PeriodSchedule.MAX_PERIODS}"
-            return false
+    if (pickCount) AlertDialog(onDismissRequest = { pickCount = false }, title = { Text("每天多少节课") }, text = {
+        Column {
+            Text("已有课程使用到第 $minimumPeriods 节。", style = MaterialTheme.typography.bodySmall)
+            NumberWheel("节数", minimumPeriods..PeriodSchedule.MAX_PERIODS, count, { count = it }, Modifier.fillMaxWidth())
         }
-        if (desired < minimumPeriods) {
-            error = "已有课程使用到第 $minimumPeriods 节，请先调整这些课程再减少节数"
-            return false
-        }
-        drafts = List(desired) { index -> drafts.getOrNull(index) ?: LessonPeriod("", "") }
-        error = null
-        return true
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("编辑每日作息") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("可设置 1—${PeriodSchedule.MAX_PERIODS} 节。时间使用 24 小时制，按先后排列且不能重叠。")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(count, { count = it; error = null }, label = { Text("每天节数") },
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                    TextButton(onClick = { applyCount() }, modifier = Modifier.padding(top = 8.dp)) { Text("应用节数") }
+    }, confirmButton = { Button(onClick = {
+        drafts = List(count) { drafts.getOrNull(it) ?: LessonPeriod("", "") }; pickCount = false; error = null
+    }) { Text("应用节数") } }, dismissButton = { TextButton(onClick = { pickCount = false }) { Text("取消") } })
+    else AlertDialog(onDismissRequest = onDismiss, title = { Text("编辑每日作息") }, text = {
+        LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("每天 ${drafts.size} 节", style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = { count = drafts.size; pickCount = true }) { Text("调整节数") }
                 }
-                if (count.toIntOrNull() != drafts.size) Text("点击“应用节数”后填写新增的时间。", style = MaterialTheme.typography.bodySmall)
-                drafts.forEachIndexed { index, period ->
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("第 ${index + 1} 节", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(period.start, { text ->
-                                drafts = drafts.mapIndexed { i, value -> if (i == index) value.copy(start = text) else value }; error = null
-                            }, label = { Text("开始 HH:mm") }, singleLine = true, modifier = Modifier.weight(1f))
-                            OutlinedTextField(period.end, { text ->
-                                drafts = drafts.mapIndexed { i, value -> if (i == index) value.copy(end = text) else value }; error = null
-                            }, label = { Text("结束 HH:mm") }, singleLine = true, modifier = Modifier.weight(1f))
-                        }
+                Text("滚动选择起止时间。每节按先后排列，不能重叠或跨午夜。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            itemsIndexed(drafts) { index, period ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("第 ${index + 1} 节", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TimeWheelField("第${index + 1}节开始", period.start.takeIf(String::isNotEmpty)?.let(LocalTime::parse), { value ->
+                            drafts = drafts.mapIndexed { i, p -> if (i == index) p.copy(start = value.toString()) else p }; error = null
+                        }, Modifier.weight(1f))
+                        TimeWheelField("第${index + 1}节结束", period.end.takeIf(String::isNotEmpty)?.let(LocalTime::parse), { value ->
+                            drafts = drafts.mapIndexed { i, p -> if (i == index) p.copy(end = value.toString()) else p }; error = null
+                        }, Modifier.weight(1f))
                     }
                 }
             }
-        },
-        confirmButton = {
-            Column {
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                Button(onClick = {
-                    if (count.toIntOrNull() != drafts.size) {
-                        if (applyCount()) error = "节数已应用，请检查每节时间后再次保存"
-                    } else {
-                        runCatching { PeriodSchedule.validate(drafts) }
-                            .onSuccess(onSave)
-                            .onFailure { error = it.message ?: "作息时间无效" }
-                    }
-                }) { Text("保存作息") }
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+        }
+    }, confirmButton = {
+        Column {
+            error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            Button(onClick = { runCatching { PeriodSchedule.validate(drafts) }.onSuccess(onSave).onFailure { error = it.message } }) { Text("保存作息") }
+        }
+    }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }

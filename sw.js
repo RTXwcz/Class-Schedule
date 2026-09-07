@@ -1,4 +1,4 @@
-const CACHE = 'schedule-pwa-v2';
+const CACHE = 'schedule-pwa-v3';
 const ASSETS = [
   './',
   './index.html',

@@ -32,6 +32,24 @@ import java.time.ZoneId
 class ReminderIntegrationTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
+    @Test fun recordingTomorrowReminderDoesNotForgetTodaysDelivery() {
+        val today = LocalDate.now()
+        val first = "dedupe-test-a@$today"
+        val second = "dedupe-test-b@${today.plusDays(1)}"
+        val prefs = context.getSharedPreferences("delivered_reminders", Context.MODE_PRIVATE)
+        val original = listOf(today, today.plusDays(1)).associateWith { prefs.getStringSet("delivered:$it", null)?.toSet() }
+        try {
+            ReminderDeliveryStore.record(context, today, first)
+            ReminderDeliveryStore.record(context, today.plusDays(1), second)
+            assertTrue(first in ReminderDeliveryStore.deliveredKeys(context, today))
+            assertTrue(second in ReminderDeliveryStore.deliveredKeys(context, today.plusDays(1)))
+        } finally {
+            val edit = prefs.edit()
+            original.forEach { (date, keys) -> if (keys == null) edit.remove("delivered:$date") else edit.putStringSet("delivered:$date", keys) }
+            edit.commit()
+        }
+    }
+
     @Test
     fun disabledNotificationsStillRefreshDatabaseSnapshotAndKeepDailyRenewal() = runBlocking {
         val repository = ScheduleRepository(AppDatabase.getInstance(context))
@@ -80,6 +98,7 @@ class ReminderIntegrationTest {
         val prefs = context.getSharedPreferences("delivered_reminders", Context.MODE_PRIVATE)
         val previousDate = prefs.getString("date", null)
         val previousKeys = prefs.getStringSet("keys", emptySet()).orEmpty().toSet()
+        val datedKeys = prefs.all.filterKeys { it.startsWith("delivered:") }.mapValues { (_, value) -> (value as Set<*>).map { it as String }.toSet() }
         // A future date keeps the test alarm from firing against real wall-clock time.
         val date = LocalDate.now().plusDays(7)
         val now = date.atTime(7, 51).atZone(ZoneId.systemDefault())
@@ -106,7 +125,9 @@ class ReminderIntegrationTest {
             assertTrue(ReminderDeliveryStore.deliveredKeys(context, date.plusDays(1)).isEmpty())
         } finally {
             scheduler.cancelAll()
-            prefs.edit().clear().putString("date", previousDate).putStringSet("keys", previousKeys).commit()
+            val restore = prefs.edit().clear().putString("date", previousDate).putStringSet("keys", previousKeys)
+            datedKeys.forEach { (key, value) -> restore.putStringSet(key, value) }
+            restore.commit()
             ReminderCoordinator.refresh(context)
         }
     }

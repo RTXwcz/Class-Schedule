@@ -68,6 +68,7 @@ class McpService : Service() {
         }
         scope.launch {
             try {
+            repository.ensureRules(settings.settings.first())
             combine(settings.settings.map { it.mcpEnabled to it.mcpPort }.distinctUntilChanged(), networkHosts) { config, hosts ->
                 Triple(config.first, config.second, hosts)
             }.distinctUntilChanged().collect { (enabled, port, _) ->

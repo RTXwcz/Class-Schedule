@@ -46,7 +46,8 @@ class ReminderScheduler(private val context: Context) {
         cancelAll()
         if (!notificationsAllowed()) return
         val plans = ReminderPlanner.plan(now, semesterStart, courses, overrides, leadMinutes,
-            includeDue = true, deliveredKeys = ReminderDeliveryStore.deliveredKeys(context, now.toLocalDate()), parityEnabled = parityEnabled, periods = periods)
+            includeDue = true, deliveredKeys = ReminderDeliveryStore.deliveredKeys(context, now.toLocalDate()) +
+                ReminderDeliveryStore.deliveredKeys(context, now.toLocalDate().plusDays(1)), parityEnabled = parityEnabled, periods = periods)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putStringSet(KEY_KEYS, plans.map { it.key }.toSet()).apply()
         plans.forEach { plan ->

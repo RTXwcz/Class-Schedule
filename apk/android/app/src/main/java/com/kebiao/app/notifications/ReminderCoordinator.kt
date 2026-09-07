@@ -2,6 +2,7 @@ package com.kebiao.app.notifications
 
 import android.content.Context
 import com.kebiao.app.data.ScheduleRepository
+import com.kebiao.app.data.ScheduleRules
 import com.kebiao.app.data.local.AppDatabase
 import com.kebiao.app.data.settings.AppSettings
 import com.kebiao.app.data.settings.AppSettingsStore
@@ -35,7 +36,7 @@ class ReminderCoordinator(
 
     fun start(scope: CoroutineScope) {
         scope.launch {
-            combine(repository.observeCourses(), repository.observeOverrides(), settingsStore.settings) { _, _, _ -> Unit }
+            combine(repository.observeSnapshot(), settingsStore.settings) { _, _ -> Unit }
                 .collect { refresh(appContext) }
         }
     }
@@ -44,7 +45,8 @@ class ReminderCoordinator(
         private val refreshMutex = Mutex()
 
         suspend fun snapshot(context: Context): ReminderSnapshot {
-            val export = ScheduleRepository(AppDatabase.getInstance(context)).snapshot()
+            val preferences = AppSettingsStore(context.applicationContext).settings.first()
+            val export = ScheduleRepository(AppDatabase.getInstance(context)).snapshotWithSettings(preferences)
             return ReminderSnapshot(
                 courses = export.courses.mapNotNull { course -> runCatching {
                     Course(course.id, course.name, course.weekday, course.startPeriod, course.endPeriod,
@@ -55,7 +57,7 @@ class ReminderCoordinator(
                 overrides = export.overrides.mapNotNull { record -> runCatching {
                     ScheduleOverride(LocalDate.parse(record.date), record.replacementWeekday, record.note)
                 }.getOrNull() },
-                settings = AppSettingsStore(context.applicationContext).settings.first(),
+                settings = ScheduleRules.read(export).apply(preferences),
             )
         }
 

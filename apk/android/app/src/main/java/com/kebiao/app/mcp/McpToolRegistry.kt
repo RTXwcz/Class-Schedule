@@ -6,6 +6,7 @@ import com.kebiao.app.data.ScheduleExam
 import com.kebiao.app.data.ScheduleExport
 import com.kebiao.app.data.ScheduleOverrideRecord
 import com.kebiao.app.data.ScheduleRepository
+import com.kebiao.app.data.ScheduleRules
 import com.kebiao.app.domain.ScheduleResolver
 import com.kebiao.app.notifications.PeriodSchedule
 import com.kebiao.app.notifications.LessonPeriod
@@ -116,9 +117,10 @@ class McpToolRegistry(
             "schedule.list_overrides" -> buildJsonObject { put("overrides", document.getValue("overrides")) }
             "schedule.for_date" -> {
                 val date = date(args.string("date"))
-                val start = semesterStart()
-                val parity = parityEnabled()
-                val times = periods()
+                val rules = if (snapshot.extraFields["rulesVersion"] == JsonPrimitive(1)) ScheduleRules.read(snapshot) else null
+                val start = rules?.semesterStartDate?.let(LocalDate::parse) ?: if (rules == null) semesterStart() else null
+                val parity = rules?.parityEnabled ?: parityEnabled()
+                val times = rules?.periods ?: periods()
                 val override = snapshot.overrides.firstOrNull { it.date == date.toString() }
                 val effective = resolver.resolve(date, start, snapshot.courses.map { it.domain() }, snapshot.overrides.map {
                     ScheduleOverride(LocalDate.parse(it.date), it.replacementWeekday, it.note)
@@ -142,6 +144,9 @@ class McpToolRegistry(
 
     private data class Mutation(val collection: String, val key: String?, val before: JsonElement, val after: JsonElement, val apply: suspend () -> Unit)
 
+    private suspend fun configuredPeriods(snapshot: ScheduleExport): List<LessonPeriod> =
+        if (snapshot.extraFields["rulesVersion"] == JsonPrimitive(1)) ScheduleRules.read(snapshot).periods else periods()
+
     private suspend fun write(name: String, args: JsonObject, isAuthorized: () -> Boolean, generation: Long): CallToolResult {
         val snapshot = store.snapshot()
         val mutation = when (name) {
@@ -153,9 +158,9 @@ class McpToolRegistry(
                     teacher = args.optionalString("teacher"), courseNote = args.optionalString("courseNote"),
                     weeks = (args["weeks"] as? JsonArray)?.map { (it as JsonPrimitive).intOrNull!! }.orEmpty())
                 record.domain()
-                require(record.endPeriod <= periods().size) { "Course exceeds configured daily period count" }
+                require(record.endPeriod <= configuredPeriods(snapshot).size) { "Course exceeds configured daily period count" }
                 Mutation("courses", id, snapshot.courses.find { it.id == id }?.let(::encode) ?: JsonNull, encode(record)) {
-                    require(record.endPeriod <= periods().size) { "Daily period count changed; review course periods" }
+                    require(record.endPeriod <= configuredPeriods(store.snapshot()).size) { "Daily period count changed; review course periods" }
                     store.upsertCourse(record)
                 }
             }
@@ -185,7 +190,7 @@ class McpToolRegistry(
                 Mutation("overrides", date, snapshot.overrides.find { it.date == date }?.let(::encode) ?: JsonNull, JsonNull) { store.deleteOverride(date) }
             }
             "schedule.clear" -> Mutation("all", null, records(snapshot), records(ScheduleExport())) {
-                store.replaceAll(snapshot.copy(courses = emptyList(), exams = emptyList(), overrides = emptyList(),
+                store.replaceAll(store.snapshot().copy(courses = emptyList(), exams = emptyList(), overrides = emptyList(),
                     source = "MCP", updatedAt = java.time.Instant.now().toString()))
             }
             else -> error("Unhandled write tool")

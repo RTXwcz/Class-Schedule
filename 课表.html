@@ -792,7 +792,7 @@ function renderCalendar(){
     cell += `<div class="daynum">${d}</div>`;
     dayExams.slice(0,3).forEach(ex => {
       const col = courseColor(ex.subject, isDark);
-      cell += `<div class="exam-chip" style="background:${col.bg};color:${col.fg};border-left-color:${col.bd}" data-id="${ex.id}"><div class="subj">${esc(ex.subject)}</div><div class="meta">${esc(ex.time)}${ex.location?' · '+esc(ex.location):''}</div></div>`;
+      cell += `<div class="exam-chip" style="background:${col.bg};color:${col.fg};border-left-color:${col.bd}" data-id="${esc(ex.id)}"><div class="subj">${esc(ex.subject)}</div><div class="meta">${esc(ex.time || '')}${ex.location?' · '+esc(ex.location):''}</div></div>`;
     });
     if (dayExams.length > 3) cell += `<div class="cal-more">+${dayExams.length-3} 场更多</div>`;
     cell += '</div>';

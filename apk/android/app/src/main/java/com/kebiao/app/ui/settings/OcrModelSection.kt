@@ -27,7 +27,7 @@ import com.kebiao.app.ocr.OcrModelManager
 import com.kebiao.app.ui.AppViewModel
 
 @Composable
-fun OcrModelSection(viewModel: AppViewModel, onboarding: Boolean = false) {
+fun OcrModelSection(viewModel: AppViewModel, onboarding: Boolean = false, onDownload: () -> Unit = {}) {
     val state by viewModel.uiState.collectAsState()
     var selected by remember(state.settings.localOcrModel) { mutableStateOf(AppViewModel.modelId(state.settings.localOcrModel)) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -51,7 +51,7 @@ fun OcrModelSection(viewModel: AppViewModel, onboarding: Boolean = false) {
             Text("已下载 ${(state.modelProgress * 100).toInt()}%")
             TextButton(onClick = viewModel::cancelModelDownload) { Text("取消下载") }
         } else {
-            Button(onClick = { viewModel.downloadLocalModel(selected) }, enabled = !state.importBusy) {
+            Button(onClick = { viewModel.downloadLocalModel(selected); onDownload() }, enabled = !state.importBusy) {
                 Text(if (state.modelInstalled && selected.wireName == state.settings.localOcrModel) "校验本地模型" else "下载所选模型")
             }
             if (state.modelInstalled && !onboarding) TextButton(onClick = viewModel::deleteLocalModel, enabled = !state.importBusy) { Text("删除本地模型") }
@@ -61,17 +61,22 @@ fun OcrModelSection(viewModel: AppViewModel, onboarding: Boolean = false) {
 }
 
 @Composable
-fun OcrChoiceDialog(viewModel: AppViewModel) {
+fun OcrChoiceDialog(viewModel: AppViewModel, onManual: () -> Unit = {}, onConfigure: () -> Unit = {}) {
     val state by viewModel.uiState.collectAsState()
     if (!state.settingsLoaded || state.settings.ocrChoiceMade) return
     AlertDialog(
-        onDismissRequest = { }, title = { Text("图片导入方式") },
-        text = { Column(Modifier.verticalScroll(rememberScrollState())) { OcrModelSection(viewModel, onboarding = true) } },
+        onDismissRequest = { }, title = { Text("从第一张课表开始") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("可以先手动填写，也可以下载本地识别模型。以后随时能在设置中切换。")
+            OcrModelSection(viewModel, onboarding = true, onDownload = onConfigure)
+            TextButton(onClick = { viewModel.updateSettings { it.copy(ocrChoiceMade = true, useLocalOcr = false) }; onConfigure() }) { Text("配置云端图片识别") }
+        } },
         confirmButton = { TextButton(onClick = {
             viewModel.updateSettings { it.copy(ocrChoiceMade = true, useLocalOcr = false) }
-        }) { Text("使用 OpenAI") } },
+            onManual()
+        }) { Text("先手动填写") } },
         dismissButton = { TextButton(onClick = {
             viewModel.updateSettings { it.copy(ocrChoiceMade = true, useLocalOcr = false) }
-        }) { Text("暂不使用图片导入") } },
+        }) { Text("先浏览课表") } },
     )
 }

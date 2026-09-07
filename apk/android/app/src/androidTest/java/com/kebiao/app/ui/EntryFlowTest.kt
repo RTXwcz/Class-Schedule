@@ -3,11 +3,16 @@ package com.kebiao.app.ui
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.Bitmap
 import java.io.File
@@ -21,20 +26,47 @@ import org.junit.Test
 class EntryFlowTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun anInactiveCourseIsAlwaysReachableAndCanBeDeletedWithConfirmation() {
+        val vm = AppViewModel()
+        vm.addCourse(Course("hidden", "限周课程", 1, 1, 2, weeks = listOf(1, 2)))
+        compose.setContent { ScheduleApp(vm) }
+        compose.onNodeWithText("限周课程").assertDoesNotExist()
+        compose.onNodeWithText("全部课程 · 1").performClick()
+        compose.onNodeWithText("限周课程").assertIsDisplayed().performClick()
+        compose.onNodeWithText("删除", substring = false).performClick()
+        compose.onNodeWithText("确认删除").performClick()
+        compose.runOnIdle { assertEquals(0, vm.uiState.value.courses.size) }
+    }
+
+    @Test fun mcpGuideExplainsSetupAndDisablesConfigUntilServerIsReady() {
+        compose.setContent { ScheduleApp(AppViewModel()) }
+        compose.onNodeWithText("设置", substring = false).performClick()
+        compose.onNodeWithText("AI 连接").performClick()
+        compose.onNodeWithText("1  连接同一个可信 Wi-Fi").assertIsDisplayed()
+        compose.onNodeWithText("复制完整 JSON 配置").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("连接不上？查看排查方法").performScrollTo().performClick()
+        compose.onNodeWithText("401 通常表示", substring = true).performScrollTo().assertIsDisplayed()
+        screenshot("mcp-guide")
+    }
+
     @Test fun settingsChangesDailyCountAndEachPeriodTime() {
         val vm = AppViewModel()
         compose.setContent { ScheduleApp(vm) }
         compose.onNodeWithText("设置", substring = false).performClick()
         compose.onNodeWithText("编辑作息").performClick()
-        compose.onNodeWithText("每天节数").performTextReplacement("2")
+        compose.onNodeWithText("调整节数").performClick()
+        repeat(10) { wheelStep("wheel-节数", "减少节数") }
         compose.onNodeWithText("应用节数").performClick()
-        compose.onAllNodesWithText("开始 HH:mm")[0].performTextReplacement("07:45")
+        compose.onNodeWithContentDescription("第1节开始").performClick()
+        wheelStep("wheel-时", "减少时")
+        wheelStep("wheel-分", "增加分")
+        compose.onNodeWithText("确定时间").performClick()
         compose.onNodeWithText("保存作息").performClick()
         compose.runOnIdle {
             assertEquals(2, vm.uiState.value.settings.periods.size)
-            assertEquals("07:45", vm.uiState.value.settings.periods.first().start)
+            assertEquals("07:01", vm.uiState.value.settings.periods.first().start)
         }
-        compose.onNodeWithText("每天 2 节", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("2 节课", substring = true).assertIsDisplayed()
         screenshot("custom-periods")
     }
 
@@ -81,4 +113,10 @@ class EntryFlowTest {
         target.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }
+    private fun wheelStep(tag: String, label: String) {
+        val action = compose.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsActions.CustomActions].first { it.label == label }
+        compose.runOnIdle { action.action() }
+        compose.waitForIdle()
+    }
+
 }

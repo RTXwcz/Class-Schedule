@@ -1,6 +1,6 @@
 {
   "name": "kebiao-app",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "我的课表 · Kotlin/Compose 原生 Android 与 Web/PWA",
   "license": "GPL-3.0-only",

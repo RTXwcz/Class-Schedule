@@ -8,6 +8,7 @@ import com.kebiao.app.data.ScheduleExam
 import com.kebiao.app.data.ScheduleExport
 import com.kebiao.app.data.ScheduleOverrideRecord
 import com.kebiao.app.data.ScheduleRepository
+import com.kebiao.app.data.ScheduleRules
 import com.kebiao.app.data.toScheduleCourse
 import com.kebiao.app.data.settings.AppSettings
 import com.kebiao.app.data.settings.AppSettingsStore
@@ -32,6 +33,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.contentOrNull
@@ -72,18 +78,24 @@ class AppViewModel(
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
     private var modelJob: Job? = null
+    private val settingsMutex = Mutex()
 
     init {
-        repository?.observeCourses()?.onEach { courses -> updateState { copy(courses = courses) } }?.launchIn(viewModelScope)
-        repository?.observeExams()?.onEach { exams -> updateState { copy(exams = exams) } }?.launchIn(viewModelScope)
-        repository?.observeMetadata()?.onEach { metadata -> updateState { copy(metadata = metadata) } }?.launchIn(viewModelScope)
-        repository?.observeOverrides()?.onEach { records ->
-            updateState { copy(overrides = records.mapNotNull(::toDomainOverride)) }
-        }?.launchIn(viewModelScope)
-        settingsStore?.settings?.onEach { settings ->
-            updateState { copy(settings = settings, settingsLoaded = true,
-                modelInstalled = localOcrManager?.isInstalled(modelId(settings.localOcrModel)) == true) }
-        }?.launchIn(viewModelScope)
+        if (repository != null && settingsStore != null) viewModelScope.launch {
+            try {
+                repository.ensureRules(settingsStore.settings.first())
+                combine(repository.observeSnapshot(), settingsStore.settings) { data, preferences ->
+                    data to ScheduleRules.read(data).apply(preferences)
+                }.collect { (data, settings) ->
+                    updateState { copy(courses = data.courses.mapNotNull(::toDomainCourse), exams = data.exams,
+                        overrides = data.overrides.mapNotNull(::toDomainOverride),
+                        metadata = data.copy(courses = emptyList(), exams = emptyList(), overrides = emptyList()),
+                        settings = settings, settingsLoaded = true,
+                        modelInstalled = localOcrManager?.isInstalled(modelId(settings.localOcrModel)) == true) }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) { updateState { copy(errorMessage = "课表读取失败：${error.message}") } }
+        }
     }
 
     fun selectDate(date: LocalDate) = updateState { copy(selectedDate = date) }
@@ -126,19 +138,41 @@ class AppViewModel(
         mutate({ copy(overrides = overrides.filterNot { it.date == date }, errorMessage = null) }) { deleteOverride(date.toString()) }
     }
 
+    fun saveOverride(previous: LocalDate?, value: ScheduleOverride) {
+        mutate({ copy(overrides = overrides.filterNot { it.date == previous || it.date == value.date } + value, errorMessage = null) }) {
+            transaction {
+                if (previous != null && previous != value.date) deleteOverride(previous.toString())
+                upsertOverride(ScheduleOverrideRecord(value.date.toString(), value.replacementWeekday, value.note))
+            }
+        }
+    }
+
     fun updateSemesterStartDate(date: LocalDate?) {
         updateSettings { it.copy(semesterStartDate = date?.toString()) }
     }
 
-    fun updateSettings(transform: (AppSettings) -> AppSettings) {
+    fun updateSettings(transform: (AppSettings) -> AppSettings) = updateSettingsAndThen(transform) { }
+
+    fun updateSettingsAndThen(transform: (AppSettings) -> AppSettings, onSaved: () -> Unit) {
         val store = settingsStore
         if (store == null) {
             updateState { copy(settings = transform(settings), errorMessage = null) }
+            onSaved()
             return
         }
         viewModelScope.launch {
             try {
-                store.update(transform)
+                settingsMutex.withLock {
+                    val preferences = store.settings.first()
+                    val current = repository?.snapshotWithSettings(preferences)?.let { ScheduleRules.read(it).apply(preferences) } ?: preferences
+                    val next = transform(current)
+                    if (repository != null) {
+                        if (ScheduleRules.from(next) != ScheduleRules.from(current)) repository.updateRules(ScheduleRules.from(next))
+                        val nextPreferences = next.copy(periods = preferences.periods, semesterStartDate = preferences.semesterStartDate, parityEnabled = preferences.parityEnabled)
+                        if (nextPreferences != preferences) store.update { nextPreferences }
+                    } else store.update { next }
+                }
+                onSaved()
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
                 updateState { copy(errorMessage = error.message ?: "设置保存失败") }
@@ -183,6 +217,8 @@ class AppViewModel(
             updateState { copy(errorMessage = "学期开始日期无效") }
             return
         }
+        val prepared = runCatching { ScheduleRules.read(export, ScheduleRules.from(uiState.value.settings)).apply(export) }
+            .getOrElse { error -> updateState { copy(errorMessage = error.message ?: "课表规则无效") }; return }
         if (repository == null) {
             updateState {
                 copy(
@@ -191,7 +227,7 @@ class AppViewModel(
                     overrides = export.overrides.mapNotNull(::toDomainOverride),
                     errorMessage = null,
                     importStatus = "导入成功",
-                    metadata = export.copy(courses = emptyList(), exams = emptyList(), overrides = emptyList()),
+                    metadata = prepared.copy(courses = emptyList(), exams = emptyList(), overrides = emptyList()),
                     settings = settings.copy(
                         semesterStartDate = if ("semesterStartDate" in export.extraFields) importedSemester else settings.semesterStartDate,
                         parityEnabled = (export.extraFields["parityEnabled"] as? JsonPrimitive)?.booleanOrNull ?: settings.parityEnabled,
@@ -204,12 +240,7 @@ class AppViewModel(
         updateState { copy(importBusy = true, importStatus = "正在导入", errorMessage = null) }
         viewModelScope.launch {
             try {
-                repository.replaceAll(export)
-                settingsStore?.update { it.copy(periods = importedPeriods) }
-                if ("semesterStartDate" in export.extraFields) settingsStore?.update { it.copy(semesterStartDate = importedSemester) }
-                (export.extraFields["parityEnabled"] as? JsonPrimitive)?.booleanOrNull?.let { enabled ->
-                    settingsStore?.update { it.copy(parityEnabled = enabled) }
-                }
+                repository.replaceAll(prepared)
                 updateState { copy(importStatus = "导入成功") }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
@@ -220,11 +251,8 @@ class AppViewModel(
 
     fun exportJson(): String = JsonScheduleCodec.encode(snapshot())
     suspend fun exportCurrentJson(): String {
-        val data = repository?.snapshot() ?: snapshot()
-        return JsonScheduleCodec.encode(data.copy(extraFields = data.extraFields +
-            ("semesterStartDate" to (uiState.value.settings.semesterStartDate?.let(::JsonPrimitive) ?: JsonNull)) +
-            ("parityEnabled" to JsonPrimitive(uiState.value.settings.parityEnabled)) +
-            ("periods" to Json.parseToJsonElement(PeriodSchedule.encode(uiState.value.settings.periods)))))
+        val data = repository?.snapshotWithSettings(settingsStore?.settings?.first() ?: uiState.value.settings) ?: snapshot()
+        return JsonScheduleCodec.encode(data)
     }
 
     fun clearError() = updateState { copy(errorMessage = null) }

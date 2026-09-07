@@ -1,6 +1,6 @@
 # 构建安卓 APK 步骤
 
-`android/` 现在是 Kotlin + Jetpack Compose 原生应用，使用 Room 保存课表、DataStore 保存设置。保留 Capacitor 构建依赖及 `www/` 网页副本，但主界面不使用 WebView。Web/PWA 仍由仓库根目录独立提供。
+`android/` 是 Kotlin + Jetpack Compose 原生应用，使用 Room 保存课表及其学期、单双周和作息规则；DataStore 保存界面、提醒和连接偏好。保留 Capacitor 构建依赖及 `www/` 网页副本，主界面使用 Compose。Web/PWA 由仓库根目录独立提供。
 
 > 环境要求：**JDK 21** + **Android SDK（Platform 36）**。Capacitor 8 的 Android 模块使用 Java 21 编译目标。
 
@@ -36,7 +36,15 @@ cd D:\kebiao-build\apk\android
 gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --console=plain
 ```
 
-两个调试产物同样位于 `apk/android/app/build/outputs/apk/debug/`。仅构建 ARM64 和 ARMv7，不生成通用包；x86/x86_64 模拟器不再作为可安装测试目标，应使用对应 ARM 设备。
+默认调试和正式构建仅产生 ARM64、ARMv7 两个包，不生成通用包。发布文件始终不含 x86/x86_64。
+
+本地 x86_64 模拟器的 UI 验证可使用专用调试选项：
+
+```powershell
+gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest -PlocalUiQa=true
+```
+
+该选项只允许明确的 debug/clean 任务，若任务图包含 release 会直接拒绝构建。其 `app-x86_64-debug.apk` 仅用于本地测试，不上传 Release；正式构建不要传这个参数。
 
 ## 原生配置
 

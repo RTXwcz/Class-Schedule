@@ -4,6 +4,8 @@ import com.kebiao.app.data.ScheduleCourse
 import com.kebiao.app.data.ScheduleExam
 import com.kebiao.app.data.ScheduleExport
 import com.kebiao.app.data.ScheduleOverrideRecord
+import com.kebiao.app.data.ScheduleRules
+import com.kebiao.app.notifications.LessonPeriod
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import java.time.LocalDate
@@ -24,6 +26,24 @@ import kotlinx.serialization.json.jsonObject
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class McpToolRegistryTest {
+    @Test fun clearPreservesRulesChangedWhileApprovalWasPending() = runTest {
+        val store = InMemoryScheduleStore()
+        val original = ScheduleRules(null, false, listOf(LessonPeriod("08:00", "08:50")))
+        store.value = original.apply(ScheduleExport(courses = listOf(ScheduleCourse("c", "Math", 1, 1, 1))))
+        val queue = McpApprovalQueue()
+        val tools = registry(store, queue)
+        val clear = async { tools.callTool("schedule.clear", args("{}")) }
+        runCurrent()
+        val updated = original.copy(periods = listOf(LessonPeriod("09:15", "10:00")))
+        store.value = updated.apply(store.value)
+        queue.resolve(queue.pending.value.single().id, true)
+        assertFalse(clear.await().isError!!)
+        assertEquals(updated, ScheduleRules.read(store.value))
+        val whole = tools.callTool("schedule.list", args("{}")).data()
+        val day = tools.callTool("schedule.for_date", args("""{"date":"2026-09-07"}""")).data()
+        assertEquals(whole["periods"], day["periods"])
+        assertTrue(store.value.courses.isEmpty())
+    }
     @Test fun eventsAreCreatedListedByDateEditedAndDeletedWithoutLosingNotes() = runTest {
         val store = InMemoryScheduleStore()
         val registry = registry(store)

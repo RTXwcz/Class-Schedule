@@ -6,6 +6,7 @@ import com.kebiao.app.data.local.CourseEntity
 import com.kebiao.app.data.local.ExamEntity
 import com.kebiao.app.data.local.DatasetMetadataEntity
 import com.kebiao.app.data.local.ScheduleOverrideEntity
+import com.kebiao.app.data.settings.AppSettings
 import com.kebiao.app.domain.model.Course
 import com.kebiao.app.domain.model.WeekRule
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,36 @@ class ScheduleRepository(private val database: AppDatabase) {
     private val metadataDao = database.datasetMetadataDao()
 
     suspend fun <T> transaction(block: suspend () -> T): T = database.withTransaction(block)
+
+    fun observeSnapshot(): Flow<ScheduleExport> = database.invalidationTracker
+        .createFlow("courses", "exams", "schedule_overrides", "dataset_metadata").map { snapshot() }
+
+    suspend fun ensureRules(legacy: AppSettings) = database.withTransaction {
+        val entity = ensureMetadata()
+        val current = entity.toExport()
+        // This migration flag is local, so importing newer JSON into an older app cannot suppress migration.
+        if (!entity.rulesInitialized) metadataDao.upsert(ScheduleRules.from(legacy).apply(current).toMetadata())
+    }
+
+    suspend fun snapshotWithSettings(legacy: AppSettings): ScheduleExport = database.withTransaction {
+        ensureRules(legacy)
+        snapshot()
+    }
+
+    suspend fun updateRules(rules: ScheduleRules) = database.withTransaction {
+        rules.validate()
+        require(dao.getCourses().all { it.endPeriod <= rules.periods.size }) { "已有课程超出新节数，请先调整课程" }
+        val current = ensureMetadata().toExport()
+        metadataDao.upsert(rules.apply(current).copy(updatedAt = Instant.now().toString(), source = "NATIVE").toMetadata())
+    }
+
+    private suspend fun validateConfiguredPeriods(courses: List<ScheduleCourse>) {
+        val current = ensureMetadata().toExport()
+        if (current.extraFields["rulesVersion"] == JsonPrimitive(1)) {
+            val count = ScheduleRules.read(current).periods.size
+            require(courses.all { it.endPeriod <= count }) { "课程超出当前作息节数" }
+        }
+    }
 
     fun observeMetadata(): Flow<ScheduleExport> = metadataDao.observe()
         .onStart { database.withTransaction { ensureMetadata() } }
@@ -72,6 +103,10 @@ class ScheduleRepository(private val database: AppDatabase) {
         require(export.courses.map { it.id }.distinct().size == export.courses.size) { "课程 ID 重复" }
         require(export.exams.map { it.id }.distinct().size == export.exams.size) { "考试 ID 重复" }
         require(export.overrides.map { it.date }.distinct().size == export.overrides.size) { "调休日期重复" }
+        if (export.extraFields["rulesVersion"] == JsonPrimitive(1)) {
+            val rules = ScheduleRules.read(export)
+            require(export.courses.all { it.endPeriod <= rules.periods.size }) { "课程超出导入作息节数" }
+        }
         database.withTransaction {
             dao.deleteAllCourses()
             dao.deleteAllExams()
@@ -86,6 +121,7 @@ class ScheduleRepository(private val database: AppDatabase) {
     suspend fun appendCourses(courses: List<ScheduleCourse>, source: String = "OPENAI") {
         database.withTransaction {
             courses.forEach(::validateCourse)
+            validateConfiguredPeriods(courses)
             dao.insertNewCourses(courses.map { it.toEntity(ScheduleExport(source = source)) })
             touchMetadata(source)
         }
@@ -95,6 +131,7 @@ class ScheduleRepository(private val database: AppDatabase) {
         validateCourse(course)
         database.withTransaction {
             val now = System.currentTimeMillis()
+            validateConfiguredPeriods(listOf(course))
             val previous = dao.getCourse(course.id)
             val saved = course.copy(
                 createdAtEpochMillis = previous?.createdAtEpochMillis?.takeIf { it > 0 }
@@ -171,6 +208,7 @@ class ScheduleRepository(private val database: AppDatabase) {
         updatedAt = updatedAt.ifBlank { Instant.now().toString() },
         source = source,
         extraFieldsJson = JsonObject(extraFields).toString(),
+        rulesInitialized = extraFields["rulesVersion"] == JsonPrimitive(1),
     )
 
     private fun DatasetMetadataEntity.toExport() = ScheduleExport(

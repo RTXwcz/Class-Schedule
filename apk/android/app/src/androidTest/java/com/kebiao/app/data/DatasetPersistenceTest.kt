@@ -11,6 +11,8 @@ import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import com.kebiao.app.data.settings.AppSettings
+import com.kebiao.app.notifications.LessonPeriod
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,7 +34,7 @@ class DatasetPersistenceTest {
 
     private fun open(): ScheduleRepository {
         val opened = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4).build()
         database = opened
         return ScheduleRepository(opened)
     }
@@ -40,6 +42,42 @@ class DatasetPersistenceTest {
     private fun reopen(): ScheduleRepository {
         database?.close()
         return open()
+    }
+
+    @Test fun recordsAndRulesCommitAndRollBackTogetherAcrossReopen() = runBlocking {
+        val repo = open()
+        repo.ensureRules(AppSettings())
+        repo.upsertCourse(ScheduleCourse("old", "原课程", 1, 1, 1))
+        val before = repo.snapshot()
+        val replacement = ScheduleRules("2026-09-07", true, listOf(LessonPeriod("09:15", "10:00")))
+            .apply(ScheduleExport(courses = listOf(ScheduleCourse("new", "新课程", 2, 1, 1))))
+        assertTrue(runCatching { repo.transaction { repo.replaceAll(replacement); error("Simulated interrupted import") } }.isFailure)
+        assertEquals(before, reopen().snapshot())
+        val reopened = ScheduleRepository(database!!)
+        reopened.replaceAll(replacement)
+        val saved = reopen().snapshot()
+        assertEquals("new", saved.courses.single().id)
+        assertEquals("09:15", ScheduleRules.read(saved).periods.single().start)
+        assertEquals(true, ScheduleRules.read(saved).parityEnabled)
+        assertEquals("2026-09-07", ScheduleRules.read(saved).semesterStartDate)
+        assertTrue(runCatching { ScheduleRepository(database!!).upsertCourse(ScheduleCourse("bad", "越界", 1, 2, 2)) }.isFailure)
+        assertEquals(saved, reopen().snapshot())
+    }
+
+    @Test fun legacyPreferencesMigrateOnceEvenIfJsonAlreadyContainsRuleFields() = runBlocking {
+        val repo = open()
+        val oldRules = ScheduleRules(null, false, listOf(LessonPeriod("08:00", "08:50")))
+        val oldData = oldRules.apply(ScheduleExport())
+        database!!.datasetMetadataDao().upsert(com.kebiao.app.data.local.DatasetMetadataEntity(
+            schemaVersion = 1, datasetId = "legacy", updatedAt = "2026-09-08T00:00:00Z", source = "IMPORT",
+            extraFieldsJson = kotlinx.serialization.json.JsonObject(oldData.extraFields).toString(), rulesInitialized = false))
+        val currentPreferences = AppSettings(periods = listOf(LessonPeriod("09:15", "10:00")), parityEnabled = true)
+        repo.ensureRules(currentPreferences)
+        assertEquals("09:15", ScheduleRules.read(repo.snapshot()).periods.single().start)
+        assertTrue(ScheduleRules.read(repo.snapshot()).parityEnabled)
+        val reopened = reopen()
+        reopened.ensureRules(AppSettings())
+        assertEquals("09:15", ScheduleRules.read(reopened.snapshot()).periods.single().start)
     }
 
     @Test fun newDatasetIdentityAndTimestampSurviveReadsAndDiskReopen() = runBlocking {
@@ -135,7 +173,7 @@ class DatasetPersistenceTest {
             migrated.exams.single())
         assertEquals(ScheduleOverrideRecord("2026-09-12", 1, "补课"), migrated.overrides.single())
         assertFalse(migrated.datasetId == "default")
-        assertEquals(3, database!!.openHelper.readableDatabase.version)
+        assertEquals(4, database!!.openHelper.readableDatabase.version)
         assertEquals(migrated, reopen().snapshot())
         repositoryAfterReopenCanStoreNewCourseFields(migrated.courses.single())
     }
@@ -160,7 +198,7 @@ class DatasetPersistenceTest {
         assertEquals(null, legacyExam.note)
         assertEquals("东门", legacyExam.locationNote)
         assertEquals(30L, legacyExam.createdAtEpochMillis)
-        assertEquals(3, database!!.openHelper.readableDatabase.version)
+        assertEquals(4, database!!.openHelper.readableDatabase.version)
         repository.upsertExam(ScheduleExam("event", "读书会", "2026-09-12", "15:30", "图书馆", "302", "北门",
             type = "EVENT", note = "带阅读笔记"))
         val afterCreate = reopen().snapshot()

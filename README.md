@@ -1,111 +1,79 @@
-# 我的课表（Class Schedule）
+# 我的课表 · Class Schedule
 
-一个面向 Android 的原生课表应用，同时保留可离线使用的 Web/PWA 版本。
+把下一节课、考试和重要日程，放在随手可见的地方。
 
-[下载 APK](https://github.com/RTXwcz/Class-Schedule/releases/latest) · [使用与构建文档](docs/README.md) · [提交问题](https://github.com/RTXwcz/Class-Schedule/issues) · [GPL-3.0-only](LICENSE)
+Android 原生课表应用，支持自定义作息、连堂课程、桌面小组件、图片识别和 AI 助手接入。无需注册账号，保留独立 Web/PWA 版本。
 
-<img src="docs/superpowers/verification/assets/usability/final-whole-week.png" width="230" alt="整周课表"> <img src="docs/superpowers/verification/assets/usability/entry-options.png" width="230" alt="手动录入入口"> <img src="docs/superpowers/verification/assets/usability/dated-items.png" width="230" alt="考试与日程">
+[下载应用](https://github.com/RTXwcz/Class-Schedule/releases/latest) · [使用指南](docs/USAGE.md) · [问题反馈](https://github.com/RTXwcz/Class-Schedule/issues) · [GPL-3.0](LICENSE)
 
-## 功能
+![课表、滚轮日期选择与录入入口](docs/product/1.4/overview.jpg)
 
-- 整周概览与展开课表、考试/日程分类、可选单双周和明确周次计算
-- 自定义每天 1–48 节及每节起止时间；连堂课程显示为一张跨节次卡片
-- 指定日期按目标星期替换的整天调休规则
-- 上课前提醒（默认 10 分钟），支持精确闹钟、重启和时区变化后恢复
-- Android 桌面小组件：显示最近三节课、时间和教学楼/教室
-- Room 本地存储、JSON 完整导入导出、数据集版本和来源元数据
-- 手动填写课程、考试或日程，也可使用图片或 JSON 导入
-- PP-OCRv6 tiny/small 本地中文 OCR；从 hf-mirror.com 主动下载，识别结果逐项确认后写入
-- OpenAI Chat Completions 兼容的图片导入，可配置 API 地址和模型
-- 局域网 MCP（Streamable HTTP）：查询、添加、修改和删除课程/考试/调休
-- 原生 Kotlin + Jetpack Compose 界面；Web/PWA 作为独立入口保留
+## 课表，按你的节奏
 
-## 下载与安装
+- **一眼看到下一节课**：首页展示时间和地点；整周概览与展开视图自由切换，不同课程使用清晰的配色。
+- **自定义每天的作息**：设置 1–48 节和各节起止时间。连上多节的课程显示为一张连续卡片。
+- **自然地选择日期和时间**：学期、调休、考试、日程和作息使用滚轮选择，自动处理月份天数与闰年。
+- **规则随学校安排**：支持指定周次、可选单双周，以及某个日期改上另一星期课程的整天调休。
+- **记录永远能找到**：全部课程入口可管理暂未生效的课程；考试与日程支持分类查看、编辑和删除。
+- **上课前提醒**：默认提前 10 分钟，桌面小组件展示最近三次课程；时间计算使用同一份作息与调休规则。
 
-首个版本：[v1.3.0](https://github.com/RTXwcz/Class-Schedule/releases/tag/v1.3.0)。提供两个独立的正式签名 APK，要求 **Android 7.0（API 24）及以上**：
+## 选择适合你的录入方式
 
-| 文件 | 适用设备 |
+| 方式 | 适合的场景 |
 | --- | --- |
-| [arm64-v8a（ARMv8，推荐）](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.3.0/class-schedule-v1.3.0-arm64-v8a.apk) | 大多数现代 Android 手机的 64 位系统 |
-| [armeabi-v7a（ARMv7）](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.3.0/class-schedule-v1.3.0-armeabi-v7a.apk) | 使用 32 位 ARM Android 系统的设备 |
+| 手动填写 | 逐门添加课程，或记录考试、活动和个人日程 |
+| 本地图片识别 | 下载 PP-OCRv6 tiny（约 6.3 MB）或 small（约 31.2 MB）后，在手机上识别图片 |
+| OpenAI 兼容接口 | 配置自己的 API 地址、模型与 Key，使用云端视觉识别 |
+| JSON 备份与恢复 | 在设备之间、原生版与 Web 版之间迁移完整课表 |
 
-不再提供 x86/x86_64 或通用 APK。Release 附带 SHA-256 校验文件和 ARM 打包配置对应的源码包。
+本地模型只在主动选择下载后获取，使用 `hf-mirror.com`，并校验固定版本的大小与 SHA-256。图片识别结果需校对确认后保存。完整备份包含课程、考试、日程、调休、学期与作息，恢复时作为一个数据集提交。
 
-如果此前安装的是 debug APK，签名与首发版不同：请先导出 JSON 备份，再卸载旧版、安装首发版并导入备份；正式版之间可使用同一签名升级。
+## 安装
 
-APK 不包含 OCR 权重。首次在设置中选择并点击下载后，模型保存到应用私有目录；不需要本地 OCR 时不会产生模型下载。
+系统要求：**Android 7.0（API 24）及以上，ARM 设备**。
 
-## 从源码构建 Android
+| 安装包 | 选择建议 |
+| --- | --- |
+| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.4.0/class-schedule-v1.4.0-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
+| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.4.0/class-schedule-v1.4.0-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
 
-环境：Android Studio、JDK 21、Android SDK Platform 36、Node.js 22 或更高版本。先安装锁定的依赖并生成 Capacitor 桥接配置，再打开 `apk/android`。Windows PowerShell 示例（JDK 路径按本机调整）：
+Release 同时提供源码包和 `SHA256SUMS.txt`。发布包不包含 x86/x86_64，也不包含 OCR 模型权重。
+
+正式版本使用同一签名，可覆盖升级。若此前安装的是 debug 包，请先导出 JSON，再卸载 debug 包、安装正式版并恢复备份。**卸载会删除应用本地数据。**
+
+## 连接 AI 助手
+
+在 **设置 → AI 连接** 按三步引导操作：连接同一个可信 Wi-Fi，开启手机服务，再将连接地址和 Token 填入支持 Streamable HTTP 的 MCP 客户端。应用提供地址、Token 和完整 JSON 模板的复制按钮。
+
+Agent 可以查询和编辑课程、考试、日程及调休。默认每次修改都需在应用确认，可自行改为配对后直接编辑；清空数据始终需要确认。Token 可以轮换，服务可随时停止。详见 [MCP 连接指南](docs/MCP.md)。
+
+## 数据与隐私
+
+- 课表保存在设备的应用数据库中；正常课表数据可能参与 Android 系统备份，具体由设备设置决定。
+- 本地 OCR 在模型下载完成后可离线运行。使用云端识别时，所选图片会发送到你配置的 API 服务，可能产生该服务的费用。
+- API Key 和 MCP Token 在本机使用 Android Keystore 加密存储，并排除在应用备份之外。
+- MCP 默认关闭，使用局域网 **HTTP，未提供传输层加密**，只应在可信网络中启用。
+- 导出的 JSON 是明文课表文件，请按其中的信息内容妥善保管。
+
+## 开发与验证
+
+原生端采用 Kotlin、Jetpack Compose、Room、DataStore 和 Glance。影响课表解释的规则与课程记录在同一数据库事务中保存；界面、提醒、小组件和 MCP 读取同一权威数据集。
 
 ```powershell
-$env:JAVA_HOME = 'C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot'
+# JDK 21、Android SDK 36、Node.js 22+
 cd apk
 npm ci
 npm run sync
 cd android
-./gradlew.bat :app:assembleDebug
+./gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
-产物位于 `apk/android/app/build/outputs/apk/debug/`，分别为 `app-arm64-v8a-debug.apk`、`app-armeabi-v7a-debug.apk`。中文路径下建议使用 ASCII junction 构建，完整说明见 [`apk/构建APK.md`](apk/构建APK.md)。
+在仓库根目录运行 Web 回归：`node --test tests/*.test.cjs`。
 
-运行 JVM 测试：
+构建和签名说明见 [构建文档](apk/构建APK.md)，协作约定见 [贡献指南](CONTRIBUTING.md)。自动检查由 [GitHub Actions](https://github.com/RTXwcz/Class-Schedule/actions/workflows/android.yml) 执行。版本变化见 [CHANGELOG](CHANGELOG.md)，独立审查和修复证据见 [审查记录](docs/reviews/README.md)。
 
-```powershell
-./gradlew.bat :app:testDebugUnitTest
-```
+目前的设备验证以 Android 15 模拟器为主。尚未测量各厂商手机的长期提醒准点率，也未对真实课表样本集建立 OCR 准确率基准；复杂图片仍可能需要手动修正。作息不支持单节跨午夜，跨午夜的提前提醒可以正常计算。
 
-运行 Web 契约测试：
+## 开源协议
 
-```powershell
-node --test tests/schedule-contract.test.cjs
-```
-
-## 使用说明
-
-1. 新安装默认关闭单双周；需要时在设置中开启并填写学期开始日期，第 1、3、5 周为单周，第 2、4、6 周为双周。关闭开关保留原规则，按每周显示；明确的周次范围仍按学期日期计算。旧版已有设置会保留原先启用状态。
-2. 课程地点分为教学楼、教室和地点备注。调休规则指定日期与目标星期后，当天自动使用目标星期的课程。
-3. MCP 默认关闭。开启后，在局域网 Agent 中使用设置页显示的 IPv4 地址和 `/mcp`，并携带 `Authorization: Bearer <Token>`。
-4. Web 版入口是根目录 [`课表.html`](课表.html)，也可以部署到 GitHub Pages。Web 的 [`schedule-contract.js`](schedule-contract.js) 与原生 `JsonScheduleCodec` 实现同一套 JSON 交换格式。
-5. 进入“录入”选择手动填写、图片识别或数据备份。“安排”可分别查看考试与日程，并编辑日期、时间、地点和备注。
-6. 在“设置 → 每日作息”编辑每天节数及各节的 `HH:mm` 起止时间。时间按先后排列且不重叠；跨多节的课程填写开始和结束节次，界面自动连成一块。减少节数前需先调整超出范围的已有课程。
-
-## 仓库结构
-
-```text
-apk/android/       原生应用、领域规则、数据库、测试及 Gradle Wrapper
-apk/www/           Web 镜像（由 tools/sync-web.ps1 同步）
-docs/              文档索引、研究、设计记录、验证截图、参考资料
-licenses/          第三方许可全文及运行时依赖声明
-tools/             Web 同步、许可汇总和签名构建脚本
-tests/             Web 数据契约测试
-课表.html          Web 主页面
-schedule-contract.js  Web 数据交换与日期规则
-```
-
-## 架构
-
-```text
-Compose UI -> AppViewModel -> ScheduleRepository -> Room
-                     |              |
-                     |              +-> ReminderCoordinator / Glance Widget
-                     +-> OCR/OpenAI -> CourseDraft -> 逐项确认
-                     +-> MCP Server -> ToolRegistry -> Repository
-```
-
-领域规则集中在 `ScheduleResolver`：课表界面、提醒、小组件和 MCP 都使用同一套日期、周次、单双周和调休逻辑。OCR 采用官方 PaddleOCR Android 代码的固定版本，修改和来源记录见 `apk/android/app/src/main/java/com/kebiao/app/ocr/paddle/UPSTREAM.md`；权重不随仓库发布。
-
-## 开源协议与第三方许可
-
-本项目自有代码以 **GNU General Public License v3.0 only** 发布，详见 [`LICENSE`](LICENSE)。分发或修改 Android 应用时，请同时提供对应源代码并保留版权与许可声明。
-
-仓库还包含第三方组件：PaddleOCR Android 源码为 Apache-2.0（目录内保留原许可证），AndroidX、ONNX Runtime、OpenCV、Ktor、Kotlin 和 Capacitor 各自遵循其上游许可证。第三方许可证不因本项目的 GPL 声明而改变，详见 [第三方声明](THIRD_PARTY_NOTICES.md)。应用设置内可离线查看 GPL 全文及依赖许可。
-
-## 验证状态
-
-已在 Android 15 模拟器完成 Room 迁移、提醒、小组件、MCP、tiny/small OCR 下载及中文推理、原生 UI 和 Web 契约测试。真实手机的厂商后台策略、通知准点率、真实课表识别准确率和实际 OpenAI 请求仍需使用者自行验收。详细记录见 [`docs/superpowers/verification/2026-09-07-native-final-verification.md`](docs/superpowers/verification/2026-09-07-native-final-verification.md)。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request。涉及课程数据格式、OCR 字段或 MCP 工具时，请同步更新测试和文档。
+项目自有代码采用 **GPL-3.0-only**，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。第三方代码保留各自的版权和许可证，见 [第三方声明](THIRD_PARTY_NOTICES.md)。应用内可离线查看许可全文。

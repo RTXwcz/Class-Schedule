@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -45,16 +46,15 @@ class ExamCalendarScreenTest {
         }
         compose.onNodeWithText("添加日程").assertIsDisplayed()
         compose.onNodeWithText("日程名称").performTextInput("读书会")
-        compose.onNodeWithText("日期 YYYY-MM-DD").performTextReplacement("2026-02-30")
-        compose.onNodeWithText("保存").assertIsNotEnabled()
-        compose.onNodeWithText("日期 YYYY-MM-DD").performTextReplacement("2026-09-12")
+        compose.onNodeWithContentDescription("日期").performClick()
+        compose.onNodeWithText("确定日期").performClick()
         compose.onNodeWithText("地点备注（可选）").performScrollTo().performTextInput("东门")
         compose.onNodeWithText("备注（可选）", substring = false).performScrollTo().performTextInput("带阅读笔记")
         compose.onNodeWithText("保存").performClick()
         compose.runOnIdle {
             assertEquals("EVENT", saved!!.type)
             assertEquals("读书会", saved!!.subject)
-            assertEquals("2026-09-12", saved!!.date)
+            assertEquals(java.time.LocalDate.now().toString(), saved!!.date)
             assertEquals(null, saved!!.time)
             assertEquals("东门", saved!!.locationNote)
             assertEquals("带阅读笔记", saved!!.note)

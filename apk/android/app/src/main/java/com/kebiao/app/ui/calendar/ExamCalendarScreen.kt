@@ -45,6 +45,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kebiao.app.data.ScheduleExam
 import com.kebiao.app.ui.AppViewModel
+import com.kebiao.app.ui.components.DateWheelField
+import com.kebiao.app.ui.components.TimeWheelField
+import com.kebiao.app.ui.components.ProductHeader
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -91,9 +94,7 @@ fun ExamCalendarScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text("考试与日程", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("把重要的日子安排好", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodyMedium)
+                ProductHeader("重要的日子", "考试、活动和计划，按日期有序展开", "考试与日程")
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -192,8 +193,12 @@ fun ExamEditorDialog(
                     FilterChip(type == "EVENT", { type = "EVENT" }, label = { Text("日程") })
                 }
                 OutlinedTextField(subject, { subject = it }, label = { Text(if (type == "EXAM") "科目" else "日程名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(date, { date = it }, label = { Text("日期 YYYY-MM-DD") }, isError = date.isNotBlank() && !validDate, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(time, { time = it }, label = { Text("时间 HH:mm（可选）") }, supportingText = { Text("留空表示全天") }, isError = !validTime, singleLine = true, modifier = Modifier.fillMaxWidth())
+                DateWheelField("日期", runCatching { LocalDate.parse(date) }.getOrNull(), { date = it.toString() })
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("全天安排", Modifier.weight(1f))
+                    androidx.compose.material3.Switch(time.isBlank(), { allDay -> time = if (allDay) "" else "09:00" })
+                }
+                if (time.isNotBlank()) TimeWheelField("开始时间", LocalTime.parse(time), { time = it.toString() })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(building, { building = it }, label = { Text(if (type == "EXAM") "教学楼" else "地点 / 建筑") }, modifier = Modifier.weight(1f), singleLine = true)
                     OutlinedTextField(room, { room = it }, label = { Text(if (type == "EXAM") "教室" else "房间") }, modifier = Modifier.weight(1f), singleLine = true)

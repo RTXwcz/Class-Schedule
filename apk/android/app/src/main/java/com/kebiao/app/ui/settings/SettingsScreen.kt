@@ -1,197 +1,140 @@
 package com.kebiao.app.ui.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import com.kebiao.app.imports.OpenAiImageContract
 import androidx.compose.ui.unit.dp
 import com.kebiao.app.domain.model.ScheduleOverride
-import com.kebiao.app.ui.AppViewModel
+import com.kebiao.app.imports.OpenAiImageContract
 import com.kebiao.app.mcp.McpSettingsSection
+import com.kebiao.app.ui.AppViewModel
+import com.kebiao.app.ui.components.*
 import java.time.LocalDate
 
 @Composable
-fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues()) {
+fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues(), initialSection: String = "课表与提醒") {
     val state by viewModel.uiState.collectAsState()
-    var semesterDate by remember(state.settings.semesterStartDate) { mutableStateOf(state.settings.semesterStartDate.orEmpty()) }
-    var semesterError by remember { mutableStateOf<String?>(null) }
-    var showOverrideEditor by remember { mutableStateOf(false) }
+    var section by rememberSaveable(initialSection) { mutableStateOf(initialSection) }
+    var editingOverride by remember { mutableStateOf<ScheduleOverride?>(null) }
+    var showOverride by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<ScheduleOverride?>(null) }
     var openAiKey by remember { mutableStateOf("") }
-    var openAiEndpoint by remember(state.settings.openAiEndpoint) { mutableStateOf(state.settings.openAiEndpoint) }
-    var openAiModel by remember(state.settings.openAiModel) { mutableStateOf(state.settings.openAiModel) }
-    var openAiStatus by remember { mutableStateOf<String?>(null) }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item { Text("设置") }
-        item { LicenseSection() }
-        item { PeriodSettingsSection(viewModel) }
+    var endpoint by remember(state.settings.openAiEndpoint) { mutableStateOf(state.settings.openAiEndpoint) }
+    var model by remember(state.settings.openAiModel) { mutableStateOf(state.settings.openAiModel) }
+    var configStatus by remember { mutableStateOf<String?>(null) }
+    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { ProductHeader("按你的节奏", "把课表调成适合自己的样子", "偏好设置") }
         item {
-            Row(Modifier.fillMaxWidth()) {
-                listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (value, label) ->
-                    Column(Modifier.weight(1f)) {
-                        RadioButton(state.settings.theme == value, { viewModel.updateSettings { it.copy(theme = value) } })
-                        Text(label)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("课表与提醒", "图片导入", "AI 连接").forEach { label ->
+                    FilterChip(section == label, { section = label }, label = { Text(label) })
+                }
+            }
+        }
+        if (section == "课表与提醒") {
+            item {
+                SettingsGroup("外观") {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (value, label) ->
+                            FilterChip(state.settings.theme == value, { viewModel.updateSettings { it.copy(theme = value) } }, label = { Text(label) })
+                        }
+                    }
+                }
+            }
+            item { PeriodSettingsSection(viewModel) }
+            item {
+                SettingsGroup("学期与周次", "设置开学日期后，周次范围和单双周课程才会按学期生效。") {
+                    DateWheelField("学期开始日期", state.settings.semesterStartDate?.let(LocalDate::parse), viewModel::updateSemesterStartDate)
+                    if (state.settings.semesterStartDate != null) TextButton(onClick = { viewModel.updateSemesterStartDate(null) }) { Text("清除学期日期") }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("启用单双周", style = MaterialTheme.typography.titleSmall)
+                            Text(if (state.settings.parityEnabled) "第 1、3、5 周为单周，第 2、4、6 周为双周" else "关闭时按每周显示，保留原有单双周规则", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(state.settings.parityEnabled, { value -> viewModel.updateSettings { it.copy(parityEnabled = value) } })
+                    }
+                }
+            }
+            item {
+                SettingsGroup("上课提醒") {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("提前提醒我", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        Switch(state.settings.notificationsEnabled, { value -> viewModel.updateSettings { it.copy(notificationsEnabled = value) } })
+                    }
+                    if (state.settings.notificationsEnabled) {
+                        Text("提前 ${state.settings.reminderLeadMinutes} 分钟", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                        Slider(state.settings.reminderLeadMinutes.toFloat().coerceIn(0f, 60f), { value -> viewModel.updateSettings { it.copy(reminderLeadMinutes = value.toInt()) } }, valueRange = 0f..60f, steps = 11)
+                        ReminderSettingsActions(true)
+                    }
+                }
+            }
+            item {
+                SettingsGroup("调休与补课", "指定某一天，改上另一个星期的整天课程。") {
+                    Button(onClick = { editingOverride = null; showOverride = true }) { Text("添加调休") }
+                    if (state.overrides.isEmpty()) Text("还没有调休安排", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    state.overrides.sortedBy { it.date }.forEach { item ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { editingOverride = item; showOverride = true }, modifier = Modifier.weight(1f)) {
+                                Text("${item.date} · 改上周${"一二三四五六日"[item.replacementWeekday - 1]}")
+                            }
+                            TextButton(onClick = { pendingDelete = item }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                        }
                     }
                 }
             }
         }
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("启用单双周", Modifier.weight(1f))
-                        Switch(state.settings.parityEnabled, { enabled -> viewModel.updateSettings { it.copy(parityEnabled = enabled) } })
-                    }
-                    Text(if (state.settings.parityEnabled) "第 1、3、5 周为单周，第 2、4、6 周为双周。请设置学期开始日期；未设置时不显示单双周课程。"
-                        else "已关闭单双周，课程按每周显示。原有单双周信息保留，重新开启后恢复。明确的周次范围仍按学期日期计算。")
-                    OutlinedTextField(
-                        value = semesterDate,
-                        onValueChange = { semesterDate = it },
-                        label = { Text("学期开始日期 YYYY-MM-DD") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = {
-                            val date = runCatching { LocalDate.parse(semesterDate.trim()) }.getOrNull()
-                            if (date != null) { viewModel.updateSemesterStartDate(date); semesterError = null }
-                            else semesterError = "请输入有效日期，例如 2026-09-07"
-                        }) { Text("保存日期") }
-                        TextButton(onClick = { semesterDate = ""; viewModel.updateSemesterStartDate(null) }) { Text("清除") }
-                    }
-                    semesterError?.let { Text(it) }
-                }
-            }
-        }
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("OpenAI 图片导入")
-                    OutlinedTextField(openAiEndpoint, { openAiEndpoint = it }, label = { Text("API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(openAiModel, { openAiModel = it }, label = { Text("模型") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(openAiKey, { openAiKey = it }, label = { Text("API Key（本机加密保存）") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true)
+        if (section == "图片导入") {
+            item { SettingsGroup("离线识别", "主动下载后，课表图片可以在手机上识别。") { OcrModelSection(viewModel) } }
+            item {
+                SettingsGroup("使用 OpenAI 兼容接口", "选择云端识别时，图片会发送到你配置的 API 服务。") {
+                    OutlinedTextField(endpoint, { endpoint = it }, label = { Text("API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(model, { model = it }, label = { Text("模型名称") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(openAiKey, { openAiKey = it }, label = { Text(if (viewModel.hasOpenAiKey()) "已保存密钥 · 输入可替换" else "API Key") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Button(onClick = {
-                        openAiStatus = runCatching {
-                            OpenAiImageContract.validateEndpoint(openAiEndpoint.trim())
-                            require(openAiModel.isNotBlank()) { "请填写模型名称" }
+                        configStatus = runCatching {
+                            OpenAiImageContract.validateEndpoint(endpoint.trim())
+                            require(model.isNotBlank()) { "请填写模型名称" }
                             viewModel.saveOpenAiKey(openAiKey)
-                            viewModel.updateSettings { it.copy(openAiEndpoint = openAiEndpoint.trim(), openAiModel = openAiModel.trim()) }
+                            viewModel.updateSettingsAndThen({ it.copy(openAiEndpoint = endpoint.trim(), openAiModel = model.trim()) }) { configStatus = "配置已保存" }
                             openAiKey = ""
-                            "配置已保存"
+                            "正在保存…"
                         }.getOrElse { it.message ?: "保存失败" }
                     }) { Text("保存配置") }
-                    openAiStatus?.let { Text(it) }
+                    configStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
             }
         }
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OcrModelSection(viewModel)
-                }
-            }
-        }
-        item {
-            McpSettingsSection(state.settings, viewModel::updateSettings)
-        }
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("课程提醒")
-                    ReminderSettingsActions(state.settings.notificationsEnabled)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("启用通知")
-                        Switch(
-                            checked = state.settings.notificationsEnabled,
-                            onCheckedChange = { value -> viewModel.updateSettings { it.copy(notificationsEnabled = value) } },
-                        )
-                    }
-                    Text("提前 ${state.settings.reminderLeadMinutes} 分钟")
-                    Slider(
-                        value = state.settings.reminderLeadMinutes.toFloat(),
-                        onValueChange = { value -> viewModel.updateSettings { it.copy(reminderLeadMinutes = value.toInt()) } },
-                        valueRange = 0f..60f,
-                        steps = 11,
-                    )
-                }
-            }
-        }
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("调休规则")
-                Button(onClick = { showOverrideEditor = true }) { Text("添加整天调休") }
-            }
-        }
-        items(state.overrides, key = { it.date.toString() }) { override ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
-                        Text("${override.date} 按周${override.replacementWeekday}上课")
-                        override.note?.takeIf { it.isNotBlank() }?.let { Text(it) }
-                    }
-                    TextButton(onClick = { viewModel.deleteOverride(override.date) }) { Text("删除") }
-                }
-            }
-        }
+        if (section == "AI 连接") item { McpSettingsSection(state.settings, viewModel::updateSettings) }
+        item { LicenseSection() }
     }
-
-    if (showOverrideEditor) {
-        OverrideEditorDialog(
-            onDismiss = { showOverrideEditor = false },
-            onSave = { viewModel.addOverride(it); showOverrideEditor = false },
-        )
-    }
+    if (showOverride) OverrideEditorDialog(editingOverride, { showOverride = false }, { viewModel.saveOverride(editingOverride?.date, it); showOverride = false })
+    pendingDelete?.let { item -> AlertDialog(onDismissRequest = { pendingDelete = null }, title = { Text("删除这条调休？") },
+        text = { Text("${item.date} 将恢复按自然星期显示课程。") },
+        confirmButton = { TextButton(onClick = { viewModel.deleteOverride(item.date); pendingDelete = null }) { Text("删除") } },
+        dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } }) }
 }
 
 @Composable
-private fun OverrideEditorDialog(onDismiss: () -> Unit, onSave: (ScheduleOverride) -> Unit) {
-    var date by remember { mutableStateOf("") }
-    var weekday by remember { mutableStateOf("1") }
-    var note by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("添加整天调休") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("指定日期当天，使用目标星期的整天课程。")
-                OutlinedTextField(date, { date = it }, label = { Text("调休日期 YYYY-MM-DD") }, singleLine = true)
-                OutlinedTextField(weekday, { weekday = it.filter(Char::isDigit) }, label = { Text("目标星期 1-7") }, singleLine = true)
-                OutlinedTextField(note, { note = it }, label = { Text("备注") }, singleLine = true)
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                val parsedDate = runCatching { LocalDate.parse(date.trim()) }.getOrNull()
-                val parsedWeekday = weekday.toIntOrNull()?.takeIf { it in 1..7 }
-                if (parsedDate != null && parsedWeekday != null) onSave(ScheduleOverride(parsedDate, parsedWeekday, note.trim().ifBlank { null }))
-            }) { Text("保存") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+private fun OverrideEditorDialog(initial: ScheduleOverride?, onDismiss: () -> Unit, onSave: (ScheduleOverride) -> Unit) {
+    var date by remember { mutableStateOf(initial?.date ?: LocalDate.now()) }
+    var weekday by remember { mutableIntStateOf(initial?.replacementWeekday ?: 1) }
+    var note by remember { mutableStateOf(initial?.note.orEmpty()) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (initial == null) "添加调休" else "编辑调休") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            DateWheelField("调休日期", date, { date = it })
+            Text("这一天改上", style = MaterialTheme.typography.titleSmall)
+            NumberWheel("星期", 1..7, weekday, { weekday = it }, Modifier.fillMaxWidth()) { "周${"一二三四五六日"[it - 1]}" }
+            OutlinedTextField(note, { note = it }, label = { Text("备注（可选）") }, singleLine = true)
+        }
+    }, confirmButton = { Button(onClick = { onSave(ScheduleOverride(date, weekday, note.trim().ifBlank { null })) }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }

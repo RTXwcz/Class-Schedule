@@ -1,10 +1,10 @@
 # Corresponding source and dependency sources
 
-The application source, build scripts, Gradle Wrapper and npm lockfile are
-available in the `class-schedule-v1.3.0-arm-source.zip` asset next to the two
-ARM APKs. The exact packaging revision is linked in the Release notes.
-https://github.com/RTXwcz/Class-Schedule/tree/v1.3.0 retains the original
-first-release packaging; use the ARM source asset for the updated ABI split.
+The application source, build scripts, Gradle Wrapper and npm lockfile for
+v1.4.0 are available at https://github.com/RTXwcz/Class-Schedule/tree/v1.4.0
+and in `class-schedule-v1.4.0-source.zip` next to its two ARM APKs.
+For historical v1.3.0 ARM builds, use that release's ARM source attachment;
+its notes identify the packaging commit separately from the original tag.
 No proprietary signing
 key is needed to build a modified version; sign it with your own Android key.
 

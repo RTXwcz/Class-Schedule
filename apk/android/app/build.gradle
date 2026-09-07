@@ -3,6 +3,17 @@ apply plugin: 'org.jetbrains.kotlin.android'
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 apply plugin: 'kotlin-kapt'
 
+// Local emulator verification only; public builds remain the two ARM variants.
+def localUiQa = providers.gradleProperty('localUiQa').orNull == 'true'
+if (localUiQa && gradle.startParameter.taskNames.any { !it.toLowerCase().contains('debug') && !it.endsWith('clean') }) {
+    throw new GradleException('localUiQa is restricted to explicit debug/clean tasks')
+}
+gradle.taskGraph.whenReady { graph ->
+    if (localUiQa && graph.allTasks.any { it.project == project && it.name.toLowerCase().contains('release') }) {
+        throw new GradleException('An emulator QA ABI cannot be used for release tasks')
+    }
+}
+
 kapt {
     arguments { arg('room.schemaLocation', "$projectDir/schemas") }
 }
@@ -14,8 +25,8 @@ android {
         applicationId "com.kebiao.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.3.0"
+        versionCode 6
+        versionName "1.4.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -30,7 +41,8 @@ android {
         abi {
             enable true
             reset()
-            include 'arm64-v8a', 'armeabi-v7a'
+            if (localUiQa) include 'x86_64'
+            else include 'arm64-v8a', 'armeabi-v7a'
             universalApk false
         }
     }
@@ -72,6 +84,10 @@ tasks.register('generateLegalAssets', Sync) {
 }
 android.sourceSets.main.assets.srcDir(legalAssets)
 tasks.named('preBuild').configure { dependsOn('generateLegalAssets') }
+// Lint can inspect generated test stubs; avoid kapt replacing those files mid-analysis.
+tasks.matching { it.name.startsWith('lintAnalyze') }.configureEach {
+    mustRunAfter(tasks.matching { it.name.startsWith('kapt') })
+}
 
 // Machine-local paths are exported only to ignored build output for notice generation.
 tasks.register('exportRuntimeInventory') {
@@ -119,6 +135,7 @@ dependencies {
     implementation 'io.ktor:ktor-server-cio:3.5.1'
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.21.1'
     implementation 'org.opencv:opencv:4.12.0'
+    implementation 'androidx.exifinterface:exifinterface:1.4.2'
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
     coreLibraryDesugaring libs.android.tools.desugar
