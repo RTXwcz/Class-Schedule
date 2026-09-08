@@ -6,12 +6,13 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 [下载应用](https://github.com/RTXwcz/Class-Schedule/releases/latest) · [使用指南](docs/USAGE.md) · [问题反馈](https://github.com/RTXwcz/Class-Schedule/issues) · [GPL-3.0](LICENSE)
 
-**v1.4.2** 修复小组件录入与 OCR 返回，统一不同尺寸的组件设计，改进折行课程名识别；ARM64 安装包缩小约 26%。[查看验证与效果](docs/product/1.4.2/VERIFICATION.md)
+**v1.5.0** 新增可选「鸢尾紫」主题，OCR 结果改为折叠摘要与一次应用，并优化切页、列表与编辑流程。[查看效果与验证](docs/product/1.5.0/VERIFICATION.md)
 
-![五种尺寸保持统一设计层级](docs/product/1.4.2/widget-sizes.jpg)
+![紫色主题、折叠校对与展开编辑](docs/product/1.5.0/purple-review.jpg)
 
 ## 课表，按你的节奏
 
+- **可选配色**：在设置中选择松林绿或鸢尾紫，各自支持跟随系统、浅色和深色；小组件同步配色。
 - **一眼看到下一节课**：首页展示时间和地点；整周概览与展开视图自由切换，不同课程使用清晰的配色。
 - **自定义每天的作息**：设置 1–48 节和各节起止时间。连上多节的课程显示为一张连续卡片。
 - **自然地选择日期和时间**：学期、调休、考试、日程和作息使用滚轮选择，自动处理月份天数与闰年。
@@ -28,7 +29,7 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 | OpenAI 兼容接口 | 配置自己的 API 地址、模型与 Key，使用云端视觉识别 |
 | JSON 备份与恢复 | 在设备之间、原生版与 Web 版之间迁移完整课表 |
 
-本地模型只在主动选择下载后获取，使用 `hf-mirror.com`，并校验固定版本的大小与 SHA-256。图片识别结果需校对确认后保存。完整备份包含课程、考试、日程、调休、学期与作息，恢复时作为一个数据集提交。
+本地模型只在主动选择下载后获取，使用 `hf-mirror.com`，并校验固定版本的大小与 SHA-256。图片识别后，每门课程默认折叠展示摘要；展开即可编辑，底部“应用识别结果”一次追加全部有效课程。缺少必填信息时可直接定位，不再逐字段勾选。统一周次仅改动主动选择的内容，移除可撤销。完整备份包含课程、考试、日程、调休、学期与作息，恢复时作为一个数据集提交。
 
 ## 安装
 
@@ -36,10 +37,10 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 | 安装包 | 选择建议 |
 | --- | --- |
-| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.4.2/class-schedule-v1.4.2-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
-| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.4.2/class-schedule-v1.4.2-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
+| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.5.0/class-schedule-v1.5.0-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
+| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.5.0/class-schedule-v1.5.0-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
 
-当前 APK 大小约 **45.13 MiB（ARM64）/ 32.57 MiB（ARMv7）**。Android 16 测试设备显示应用本体约 53.61 MB；模型、课表数据、缓存和系统优化文件另计，不同设备统计会有差异。
+当前 APK 大小约 **45.15 MiB（ARM64）/ 32.59 MiB（ARMv7）**。模型、课表数据、缓存和系统优化文件另计，不同设备统计会有差异。
 
 Release 同时提供源码包和 `SHA256SUMS.txt`。发布包不包含 x86/x86_64，也不包含 OCR 模型权重。
 
@@ -73,7 +74,7 @@ Android 工程直接使用 Gradle 构建，不依赖 Node.js 或 Capacitor 同�
 
 构建和签名说明见 [构建文档](apk/构建APK.md)，协作约定见 [贡献指南](CONTRIBUTING.md)。自动检查由 [GitHub Actions](https://github.com/RTXwcz/Class-Schedule/actions/workflows/android.yml) 执行。版本变化见 [CHANGELOG](CHANGELOG.md)，独立审查和修复证据见 [审查记录](docs/reviews/README.md)。
 
-本版在 Android 7.0、15、16 模拟器执行了有明确范围的验证，Android 16 使用正式签名的 ARM64 包（模拟器 ARM 转译）。tiny 与 small 对一张人工核对的真实课表，均正确输出 30 条课程的名称、星期和节次；这不代表广泛课表样本的准确率。尚未验证红米 K90 Pro Max／澎湃 OS 4／Android 17，也未测量厂商设备的长期提醒准点率；复杂或模糊图片仍需手动校对。作息不支持单节跨午夜，跨午夜的提前提醒可以正常计算。
+v1.5.0 的界面与主题在 Android 7.0 和 15 模拟器验证。历史版本的 Android 16 正式 ARM64 包验证保留在对应版本记录中。v1.4.2 中，tiny 与 small 对一张人工核对的真实课表，均正确输出 30 条课程的名称、星期和节次；这不代表广泛课表样本的准确率。尚未验证红米 K90 Pro Max／澎湃 OS 4／Android 17，也未测量厂商设备的长期提醒准点率；复杂或模糊图片仍需手动校对。作息不支持单节跨午夜，跨午夜的提前提醒可以正常计算。
 
 ## 开源协议
 

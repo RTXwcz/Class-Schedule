@@ -26,10 +26,10 @@ class OpenAiImageContractTest {
         assertFailsWith<IllegalArgumentException> { OpenAiImageContract.parseResponse(response("[]")) }
     }
 
-    @Test fun acceptsFencedJsonAndRequiresReview() {
+    @Test fun validFencedJsonIsEligibleForBatchApplyWithoutFieldConfirmations() {
         val draft = OpenAiImageContract.parseResponse(response("```json\n[{\"name\":\"数学\",\"weekday\":1,\"startPeriod\":1,\"endPeriod\":2,\"weekRule\":\"ODD\"}]\n```")).single()
-        assertFalse(ImportValidation.canPersist(listOf(draft)))
-        assertTrue(ImportValidation.canPersist(listOf(draft.confirmAll())))
+        assertFalse(draft.name.confirmed)
+        assertTrue(ImportValidation.canPersist(listOf(draft)))
     }
 
     @Test fun validatesCustomHttpsEndpoint() {

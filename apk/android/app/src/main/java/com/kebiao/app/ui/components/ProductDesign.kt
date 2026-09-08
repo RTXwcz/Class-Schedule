@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,47 @@ val ProductDarkColors = darkColorScheme(
     surfaceContainerHighest = Color(0xFF353C42), outline = Color(0xFF7C8991), outlineVariant = Color(0xFF343C42),
     surfaceTint = Color(0xFF9EDBC5), inverseSurface = Color(0xFFE8ECEF), inverseOnSurface = Color(0xFF20262A), inversePrimary = Color(0xFF235649),
 )
+
+val ProductPurpleLightColors = lightColorScheme(
+    primary = Color(0xFF6750A4), onPrimary = Color.White,
+    primaryContainer = Color(0xFFEADDFF), onPrimaryContainer = Color(0xFF432A70),
+    secondary = Color(0xFF625B71), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE8DEF8), onSecondaryContainer = Color(0xFF40384E),
+    tertiary = Color(0xFF7D5260), onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFFFD8E4), onTertiaryContainer = Color(0xFF633B48),
+    background = Color(0xFFFEF7FF), onBackground = Color(0xFF211D25),
+    surface = Color(0xFFFFFBFE), onSurface = Color(0xFF211D25),
+    surfaceVariant = Color(0xFFE7E0EC), onSurfaceVariant = Color(0xFF625B69),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF7F2FA),
+    surfaceContainer = Color(0xFFF3EDF7), surfaceContainerHigh = Color(0xFFECE6F0),
+    surfaceContainerHighest = Color(0xFFE6E0E9), outline = Color(0xFF79717F), outlineVariant = Color(0xFFCAC4D0),
+    surfaceTint = Color(0xFF6750A4), inverseSurface = Color(0xFF322F35), inverseOnSurface = Color(0xFFF5EFF7), inversePrimary = Color(0xFFD0BCFF),
+)
+
+val ProductPurpleDarkColors = darkColorScheme(
+    primary = Color(0xFFD0BCFF), onPrimary = Color(0xFF381E72),
+    primaryContainer = Color(0xFF4F378B), onPrimaryContainer = Color(0xFFEADDFF),
+    secondary = Color(0xFFCCC2DC), onSecondary = Color(0xFF332D41),
+    secondaryContainer = Color(0xFF4A4458), onSecondaryContainer = Color(0xFFE8DEF8),
+    tertiary = Color(0xFFEFB8C8), onTertiary = Color(0xFF492532),
+    tertiaryContainer = Color(0xFF633B48), onTertiaryContainer = Color(0xFFFFD8E4),
+    background = Color(0xFF141218), onBackground = Color(0xFFE9E0ED),
+    surface = Color(0xFF1D1B20), onSurface = Color(0xFFE9E0ED),
+    surfaceVariant = Color(0xFF49454F), onSurfaceVariant = Color(0xFFCAC4D0),
+    surfaceContainerLowest = Color(0xFF0F0D13), surfaceContainerLow = Color(0xFF231F28),
+    surfaceContainer = Color(0xFF29252F), surfaceContainerHigh = Color(0xFF312D37),
+    surfaceContainerHighest = Color(0xFF39353F), outline = Color(0xFF948D9B), outlineVariant = Color(0xFF49434F),
+    surfaceTint = Color(0xFFD0BCFF), inverseSurface = Color(0xFFE6E0E9), inverseOnSurface = Color(0xFF322F35), inversePrimary = Color(0xFF6750A4),
+)
+
+val LocalProductColorPalette = staticCompositionLocalOf { "green" }
+
+fun productColorScheme(colorPalette: String, dark: Boolean): ColorScheme = when {
+    colorPalette == "purple" && dark -> ProductPurpleDarkColors
+    colorPalette == "purple" -> ProductPurpleLightColors
+    dark -> ProductDarkColors
+    else -> ProductLightColors
+}
 
 @Composable
 fun ProductHeader(title: String, subtitle: String, eyebrow: String? = null, action: @Composable (() -> Unit)? = null) {
@@ -97,6 +139,11 @@ fun courseColors(name: String): Pair<Color, Color> {
 
 /** Keep the next-course panel quiet at night while retaining its hierarchy. */
 @Composable
-fun nextCoursePalette(): List<Color> = if (MaterialTheme.colorScheme.background.red < .3f)
-    listOf(Color(0xFF253830), Color(0xFF202C29), Color(0xFFC7F0DD), Color(0xFFB2C7BD))
-else listOf(Color(0xFF214F40), Color(0xFF356E57), Color.White, Color(0xFFD6E5DA))
+fun nextCoursePalette(): List<Color> = nextCourseColors(LocalProductColorPalette.current, MaterialTheme.colorScheme.background.red < .3f)
+
+fun nextCourseColors(colorPalette: String, dark: Boolean): List<Color> = when {
+    colorPalette == "purple" && dark -> listOf(Color(0xFF33274A), Color(0xFF282031), Color(0xFFEBDDFF), Color(0xFFCDBFDB))
+    colorPalette == "purple" -> listOf(Color(0xFF5C438F), Color(0xFF775BA8), Color.White, Color(0xFFF1E7FF))
+    dark -> listOf(Color(0xFF253830), Color(0xFF202C29), Color(0xFFC7F0DD), Color(0xFFB2C7BD))
+    else -> listOf(Color(0xFF214F40), Color(0xFF356E57), Color.White, Color(0xFFD6E5DA))
+}

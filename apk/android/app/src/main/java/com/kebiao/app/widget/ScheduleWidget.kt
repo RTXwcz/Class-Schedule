@@ -61,7 +61,7 @@ object ScheduleWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val snapshot = ReminderCoordinator.snapshot(context)
         val courses = WidgetSnapshotProvider.upcoming(java.time.ZonedDateTime.now(), snapshot).map { it.course }
-        updateAppWidgetState(context, id) { WidgetSnapshotProvider.write(it, courses, snapshot.settings.periods) }
+        updateAppWidgetState(context, id) { WidgetSnapshotProvider.write(it, courses, snapshot.settings.periods, snapshot.settings.colorPalette) }
         provideContent { ScheduleWidgetContent() }
     }
 }
@@ -74,13 +74,14 @@ internal fun ScheduleWidgetContent() {
     val dense = LocalSize.current.height < 160.dp
     val compact = LocalSize.current.height < 220.dp
     val spacious = LocalSize.current.height >= 270.dp
-    val foreground = ColorProvider(Color(0xFF244C3D), Color(0xFFE8ECEF))
-    val secondary = ColorProvider(Color(0xFF68766E), Color(0xFFADB7BD))
-    val accent = ColorProvider(Color(0xFF34745B), Color(0xFF9EDBC5))
+    val purple = state[WidgetKeys.colorPalette] == "purple"
+    val foreground = if (purple) ColorProvider(Color(0xFF2D2638), Color(0xFFF0E9F7)) else ColorProvider(Color(0xFF244C3D), Color(0xFFE8ECEF))
+    val secondary = if (purple) ColorProvider(Color(0xFF70677C), Color(0xFFBDB3C9)) else ColorProvider(Color(0xFF68766E), Color(0xFFADB7BD))
+    val accent = if (purple) ColorProvider(Color(0xFF6750A4), Color(0xFFD0BCFF)) else ColorProvider(Color(0xFF34745B), Color(0xFF9EDBC5))
     val open = actionStartActivity(WidgetNavigation.intent(LocalContext.current,
         if (count == 0) WidgetNavigation.ENTRY else WidgetNavigation.TIMETABLE), activityOptions = WidgetNavigation.activityOptions())
     Column(modifier = GlanceModifier.fillMaxSize().appWidgetBackground()
-        .background(ImageProvider(R.drawable.widget_surface)).cornerRadius(28.dp)
+        .background(ImageProvider(if (purple) R.drawable.widget_surface_purple else R.drawable.widget_surface)).cornerRadius(28.dp)
         // At the minimum height, preserve safe horizontal space inside the 28dp corners.
         // Keep vertical space for CJK font padding instead of clipping location/date baselines.
         .clickable(open).padding(horizontal = if (dense) 16.dp else if (compact) 14.dp else 18.dp,
@@ -97,7 +98,7 @@ internal fun ScheduleWidgetContent() {
             Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
                 Text("接下来的课程", GlanceModifier.defaultWeight(), style = TextStyle(color = secondary, fontSize = (if (dense) 7 else 11).sp, fontWeight = FontWeight.Medium), maxLines = 1)
                 Text("${state[WidgetKeys.date(0)].orEmpty()}  ${state[WidgetKeys.weekday(0)].orEmpty()}",
-                    GlanceModifier.background(ImageProvider(R.drawable.widget_date_chip)).padding(horizontal = if (dense) 4.dp else 8.dp, vertical = if (dense) 0.dp else if (compact) 1.dp else if (spacious) 4.dp else 3.dp),
+                    GlanceModifier.background(ImageProvider(if (purple) R.drawable.widget_date_chip_purple else R.drawable.widget_date_chip)).padding(horizontal = if (dense) 4.dp else 8.dp, vertical = if (dense) 0.dp else if (compact) 1.dp else if (spacious) 4.dp else 3.dp),
                     style = TextStyle(color = accent, fontSize = (if (dense) 7 else if (compact) 9 else 10).sp), maxLines = 1)
             }
             Spacer(GlanceModifier.height(if (dense) 1.dp else if (compact) 3.dp else if (spacious) 14.dp else 7.dp))
@@ -108,7 +109,7 @@ internal fun ScheduleWidgetContent() {
                 Text(state[WidgetKeys.location(0)].orEmpty(), style = TextStyle(color = secondary, fontSize = (if (dense) 7 else if (compact) 9 else 11).sp), maxLines = 1)
             }
             if (count > 1) {
-                Box(GlanceModifier.fillMaxWidth().height(1.dp).background(ColorProvider(Color(0xFFE3EAE4), Color(0xFF343C41)))) { }
+                Box(GlanceModifier.fillMaxWidth().height(1.dp).background(if (purple) ColorProvider(Color(0xFFE8E0F0), Color(0xFF403746)) else ColorProvider(Color(0xFFE3EAE4), Color(0xFF343C41)))) { }
                 Spacer(GlanceModifier.height(if (dense) 1.dp else if (compact) 2.dp else 5.dp))
                 for (index in 1 until count) {
                     Row(GlanceModifier.fillMaxWidth().height(if (dense) 23.dp else if (compact) 28.dp else if (spacious) 37.dp else 34.dp).clickable(open).semantics { contentDescription = description(state, index) }, verticalAlignment = Alignment.Vertical.CenterVertically) {

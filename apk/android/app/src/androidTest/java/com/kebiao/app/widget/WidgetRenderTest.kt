@@ -31,10 +31,10 @@ class WidgetRenderTest {
             "-empty" to emptyList(),
         )
         // Iterate production sizes so a newly supported size cannot silently escape this check.
-        for (dark in listOf(false, true)) for (size in ScheduleWidget.supportedSizes) for ((sample, names) in samples) {
+        for (palette in listOf("green", "purple")) for (dark in listOf(false, true)) for (size in ScheduleWidget.supportedSizes) for ((sample, names) in samples) {
             val width = size.width.value.toInt()
             val height = size.height.value.toInt()
-            val label = "${width}x$height/${if (dark) "dark" else "light"}$sample"
+            val label = "$palette/${width}x$height/${if (dark) "dark" else "light"}$sample"
             val config = Configuration(context.resources.configuration).apply {
                 uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
                     if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
@@ -46,7 +46,7 @@ class WidgetRenderTest {
                 EffectiveCourse(Course("widget-$index", name, 2, index + 1, index + 1,
                     building = if (sample == "-long") "综合实验教学楼" else "教学楼", room = "A30${index+1}"),
                     LocalDate.of(2026, 9, 8 + index), 2, null)
-            })
+            }, colorPalette = palette)
             val result = GlanceRemoteViews().compose(themed, size, state = prefs) { ScheduleWidgetContent() }
             instrumentation.runOnMainSync {
                 val pixels = themed.resources.displayMetrics.density
@@ -60,7 +60,7 @@ class WidgetRenderTest {
                 // Save even a failing layout so the assertion can be checked against real pixels.
                 val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                 root.draw(Canvas(bitmap))
-                val path = File(context.getExternalFilesDir(null), "widget-${width}x$height-${if (dark) "dark" else "light"}$sample.png")
+                val path = File(context.getExternalFilesDir(null), "widget-$palette-${width}x$height-${if (dark) "dark" else "light"}$sample.png")
                 path.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 // Pre-Android 12 Glance templates contain empty placeholder TextViews.
                 // Required content is asserted separately below; only actual labels have glyphs.
@@ -127,7 +127,7 @@ class WidgetRenderTest {
                 }
                 assertEquals("$label: rounded corner stays transparent", 0, android.graphics.Color.alpha(bitmap.getPixel(0, 0)))
                 if (names.isNotEmpty()) {
-                    val separatorColor = if (dark) 0xFF343C41.toInt() else 0xFFE3EAE4.toInt()
+                    val separatorColor = if (palette == "purple") { if (dark) 0xFF403746.toInt() else 0xFFE8E0F0.toInt() } else if (dark) 0xFF343C41.toInt() else 0xFFE3EAE4.toInt()
                     val firstLocation = text(prefs[WidgetKeys.location(0)].orEmpty())
                     val between = bounds(firstLocation).bottom.coerceIn(0, h - 1)..bounds(text("09:00")).top.coerceIn(0, h - 1)
                     assertTrue("$label: divider separates featured course and next two rows", between.any { y ->

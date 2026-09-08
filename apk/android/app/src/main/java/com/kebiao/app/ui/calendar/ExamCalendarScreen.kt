@@ -38,6 +38,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,11 +62,15 @@ fun ExamCalendarScreen(
     onInitialTypeConsumed: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
-    var filter by remember { mutableStateOf("ALL") }
+    var filter by rememberSaveable { mutableStateOf("ALL") }
+    var showHistory by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ScheduleExam?>(null) }
     var editorType by remember { mutableStateOf("EXAM") }
     var showEditor by remember { mutableStateOf(false) }
-    val datedItems = state.exams.filter { filter == "ALL" || it.type == filter }
+    val today = LocalDate.now().toString()
+    val filtered = state.exams.filter { filter == "ALL" || it.type == filter }
+    val past = filtered.filter { it.date < today }
+    val datedItems = filtered.filter { it.date >= today }
         .sortedWith(compareBy<ScheduleExam> { it.date }.thenBy { it.time.orEmpty() }.thenBy { it.subject })
     LaunchedEffect(initialType) {
         if (initialType in setOf("EXAM", "EVENT")) {
@@ -107,13 +112,23 @@ fun ExamCalendarScreen(
                 Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Icon(Icons.Outlined.CalendarMonth, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary)
-                        Text(if (filter == "ALL") "还没有安排" else if (filter == "EXAM") "还没有考试" else "还没有日程",
+                        Text(if (past.isNotEmpty()) "近期没有安排" else if (filter == "ALL") "还没有安排" else if (filter == "EXAM") "还没有考试" else "还没有日程",
                             style = MaterialTheme.typography.titleLarge)
                         Text("添加考试、会议或个人计划，按日期集中查看。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
-            datedItems.groupBy { it.date }.forEach { (date, group) ->
+            val groups = datedItems.groupBy { it.date }.toList() + listOf("history" to emptyList<ScheduleExam>()) +
+                if (showHistory) past.sortedWith(compareByDescending<ScheduleExam> { it.date }.thenBy { it.time.orEmpty() }).groupBy { it.date }.toList() else emptyList()
+            groups.forEach { (date, group) ->
+                if (date == "history") {
+                    if (past.isNotEmpty()) item(key = "history") {
+                        TextButton(onClick = { showHistory = !showHistory }, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (showHistory) "收起过去安排 · ${past.size}" else "查看过去安排 · ${past.size}")
+                        }
+                    }
+                    return@forEach
+                }
                 item(key = "date:$date") {
                     Text(dateLabel(date), style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
@@ -171,20 +186,31 @@ fun ExamEditorDialog(
     onDelete: (ScheduleExam) -> Unit,
     initialType: String = "EXAM",
 ) {
-    var type by remember(initial) { mutableStateOf(initial?.type ?: initialType) }
-    var subject by remember(initial) { mutableStateOf(initial?.subject.orEmpty()) }
-    var date by remember(initial) { mutableStateOf(initial?.date ?: LocalDate.now().toString()) }
-    var time by remember(initial) { mutableStateOf(initial?.time.orEmpty()) }
-    var building by remember(initial) { mutableStateOf(initial?.building.orEmpty()) }
-    var room by remember(initial) { mutableStateOf(initial?.room.orEmpty()) }
-    var locationNote by remember(initial) { mutableStateOf(initial?.locationNote.orEmpty()) }
-    var note by remember(initial) { mutableStateOf(initial?.note.orEmpty()) }
+    var type by rememberSaveable(initial) { mutableStateOf(initial?.type ?: initialType) }
+    var subject by rememberSaveable(initial) { mutableStateOf(initial?.subject.orEmpty()) }
+    val originalDate = rememberSaveable(initial) { initial?.date ?: LocalDate.now().toString() }
+    var date by rememberSaveable(initial) { mutableStateOf(originalDate) }
+    var selectedTime by rememberSaveable(initial) { mutableStateOf(initial?.time ?: "09:00") }
+    var allDay by rememberSaveable(initial) { mutableStateOf(initial?.time.isNullOrBlank()) }
+    val time = if (allDay) "" else selectedTime
+    var building by rememberSaveable(initial) { mutableStateOf(initial?.building.orEmpty()) }
+    var room by rememberSaveable(initial) { mutableStateOf(initial?.room.orEmpty()) }
+    var locationNote by rememberSaveable(initial) { mutableStateOf(initial?.locationNote.orEmpty()) }
+    var note by rememberSaveable(initial) { mutableStateOf(initial?.note.orEmpty()) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDiscard by remember { mutableStateOf(false) }
     val validDate = date.trim().matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && runCatching { LocalDate.parse(date.trim()) }.isSuccess
     val validTime = time.isBlank() || (time.trim().matches(Regex("\\d{2}:\\d{2}")) && runCatching { LocalTime.parse(time.trim()) }.isSuccess)
     val typeLabel = if (type == "EVENT") "日程" else "考试"
+    val hasChanges = type != (initial?.type ?: initialType) || subject != initial?.subject.orEmpty() ||
+        date != originalDate || time != initial?.time.orEmpty() || building != initial?.building.orEmpty() ||
+        room != initial?.room.orEmpty() || locationNote != initial?.locationNote.orEmpty() || note != initial?.note.orEmpty()
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!confirmDelete && !confirmDiscard) {
+                if (hasChanges) confirmDiscard = true else onDismiss()
+            }
+        },
         title = { Text("${if (initial == null) "添加" else "编辑"}$typeLabel") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -196,9 +222,9 @@ fun ExamEditorDialog(
                 DateWheelField("日期", runCatching { LocalDate.parse(date) }.getOrNull(), { date = it.toString() })
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("全天安排", Modifier.weight(1f))
-                    androidx.compose.material3.Switch(time.isBlank(), { allDay -> time = if (allDay) "" else "09:00" })
+                    androidx.compose.material3.Switch(allDay, { allDay = it })
                 }
-                if (time.isNotBlank()) TimeWheelField("开始时间", LocalTime.parse(time), { time = it.toString() })
+                if (!allDay) TimeWheelField("开始时间", LocalTime.parse(selectedTime), { selectedTime = it.toString() })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(building, { building = it }, label = { Text(if (type == "EXAM") "教学楼" else "地点 / 建筑") }, modifier = Modifier.weight(1f), singleLine = true)
                     OutlinedTextField(room, { room = it }, label = { Text(if (type == "EXAM") "教室" else "房间") }, modifier = Modifier.weight(1f), singleLine = true)
@@ -224,6 +250,12 @@ fun ExamEditorDialog(
                 TextButton(onClick = onDismiss) { Text("取消") }
             }
         },
+    )
+    if (confirmDiscard) AlertDialog(
+        onDismissRequest = { confirmDiscard = false }, title = { Text("放弃修改？") },
+        text = { Text("这条安排的修改尚未保存，可以继续编辑。") },
+        confirmButton = { TextButton(onClick = { confirmDiscard = false; onDismiss() }) { Text("放弃修改", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("继续编辑") } },
     )
     if (confirmDelete && initial != null) AlertDialog(
         onDismissRequest = { confirmDelete = false }, title = { Text("删除这条安排？") },

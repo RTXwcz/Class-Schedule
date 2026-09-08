@@ -54,6 +54,7 @@ data class AppUiState(
     val selectedDate: LocalDate = LocalDate.now(),
     val errorMessage: String? = null,
     val importDrafts: List<CourseDraft>? = null,
+    val removedImportDraft: Pair<Int, CourseDraft>? = null,
     val importBusy: Boolean = false,
     val importStatus: String? = null,
     val importImageUri: android.net.Uri? = null,
@@ -265,7 +266,7 @@ class AppViewModel(
     fun recognizeImage(uri: android.net.Uri, local: Boolean = false) {
         if (uiState.value.importBusy || uiState.value.importDrafts != null) return
         val settings = uiState.value.settings
-        updateState { copy(importBusy = true, importDrafts = null, importImageUri = uri, importSource = if (local) "OCR" else "OPENAI",
+        updateState { copy(importBusy = true, importDrafts = null, removedImportDraft = null, importImageUri = uri, importSource = if (local) "OCR" else "OPENAI",
             importStatus = "正在识别", errorMessage = null) }
         viewModelScope.launch {
             try {
@@ -322,15 +323,43 @@ class AppViewModel(
     }
 
     fun editImportDrafts(drafts: List<CourseDraft>) {
-        if (!uiState.value.importBusy) updateState { copy(importDrafts = drafts) }
+        if (!uiState.value.importBusy) updateState { copy(importDrafts = drafts, removedImportDraft = if (importDrafts == null) null else removedImportDraft) }
+    }
+
+    fun removeImportDraft(id: String) {
+        if (uiState.value.importBusy) return
+        updateState {
+            val drafts = importDrafts ?: return@updateState this
+            val index = drafts.indexOfFirst { it.reviewId == id }
+            if (index < 0) this else copy(importDrafts = drafts.filterNot { it.reviewId == id }, removedImportDraft = index to drafts[index])
+        }
+    }
+
+    fun undoImportRemoval() {
+        if (uiState.value.importBusy) return
+        updateState {
+            val drafts = importDrafts ?: return@updateState this
+            val (index, draft) = removedImportDraft ?: return@updateState this
+            copy(importDrafts = if (drafts.any { it.reviewId == draft.reviewId }) drafts else drafts.toMutableList().apply { add(index.coerceIn(0, size), draft) }, removedImportDraft = null)
+        }
     }
 
     fun cancelImport() {
-        if (!uiState.value.importBusy) updateState { copy(importDrafts = null, importImageUri = null, importStatus = null) }
+        if (!uiState.value.importBusy) updateState { copy(importDrafts = null, removedImportDraft = null, importImageUri = null, importStatus = null) }
     }
 
     fun saveImportDrafts(drafts: List<CourseDraft>) {
-        if (uiState.value.importBusy || !ImportValidation.canPersist(drafts, uiState.value.settings.periods.size)) return
+        val state = uiState.value
+        // A queued tap must not apply an abandoned, edited, or already applied review again.
+        if (state.importBusy || state.importDrafts != drafts || drafts.isEmpty()) return
+        val invalid = drafts.withIndex().firstNotNullOfOrNull { (index, draft) ->
+            ImportValidation.validate(draft, state.settings.periods.size).firstOrNull()?.let { index to it }
+        }
+        if (invalid != null) {
+            updateState { copy(errorMessage = "第 ${invalid.first + 1} 门课程：${invalid.second.message}") }
+            return
+        }
+        val source = state.importSource
         updateState { copy(importBusy = true, errorMessage = null) }
         viewModelScope.launch {
             try {
@@ -341,14 +370,14 @@ class AppViewModel(
                         startPeriod = requireNotNull(draft.startPeriod.value), endPeriod = requireNotNull(draft.endPeriod.value),
                         weekRule = requireNotNull(draft.weekRule.value).name, building = draft.building.value?.trim()?.ifBlank { null },
                         room = draft.room.value?.trim()?.ifBlank { null }, locationNote = draft.locationNote.value?.trim()?.ifBlank { null },
-                        source = uiState.value.importSource, createdAtEpochMillis = now, updatedAtEpochMillis = now,
+                        source = source, createdAtEpochMillis = now, updatedAtEpochMillis = now,
                         teacher = draft.teacher.value?.trim()?.ifBlank { null },
                         weeks = com.kebiao.app.domain.WeekSelection.parse(draft.weeks.value.orEmpty()),
                         courseNote = draft.courseNote.value?.trim()?.ifBlank { null },
                     )
                 }
-                requireNotNull(repository) { "数据库尚未初始化" }.appendCourses(courses, source = uiState.value.importSource)
-                updateState { copy(importDrafts = null, importImageUri = null, importStatus = "已追加 ${courses.size} 门课程") }
+                requireNotNull(repository) { "数据库尚未初始化" }.appendCourses(courses, source = source)
+                updateState { copy(importDrafts = null, removedImportDraft = null, importImageUri = null, importStatus = "已追加 ${courses.size} 门课程") }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
                 updateState { copy(errorMessage = error.message ?: "保存失败") }

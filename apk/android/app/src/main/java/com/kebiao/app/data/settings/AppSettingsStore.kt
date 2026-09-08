@@ -28,11 +28,13 @@ data class AppSettings(
     val openAiModel: String = "gpt-4o-mini",
     val parityEnabled: Boolean = false,
     val periods: List<LessonPeriod> = PeriodSchedule.defaults,
+    val colorPalette: String = "green",
 )
 
 class AppSettingsStore(private val context: Context) {
     private object Keys {
         val theme = stringPreferencesKey("theme")
+        val colorPalette = stringPreferencesKey("color_palette")
         val semesterStartDate = stringPreferencesKey("semester_start_date")
         val reminderLeadMinutes = intPreferencesKey("reminder_lead_minutes")
         val notificationsEnabled = booleanPreferencesKey("notifications_enabled")
@@ -51,6 +53,7 @@ class AppSettingsStore(private val context: Context) {
     val settings: Flow<AppSettings> = context.appSettingsDataStore.data.map { p ->
         AppSettings(
             theme = p[Keys.theme] ?: "system",
+            colorPalette = p[Keys.colorPalette].normalizedColorPalette(),
             semesterStartDate = p[Keys.semesterStartDate],
             reminderLeadMinutes = (p[Keys.reminderLeadMinutes] ?: 10).coerceIn(0, 120),
             notificationsEnabled = p[Keys.notificationsEnabled] ?: true,
@@ -71,6 +74,7 @@ class AppSettingsStore(private val context: Context) {
         context.appSettingsDataStore.edit { p ->
             val current = AppSettings(
                 theme = p[Keys.theme] ?: "system",
+                colorPalette = p[Keys.colorPalette].normalizedColorPalette(),
                 semesterStartDate = p[Keys.semesterStartDate],
                 reminderLeadMinutes = p[Keys.reminderLeadMinutes] ?: 10,
                 notificationsEnabled = p[Keys.notificationsEnabled] ?: true,
@@ -89,6 +93,7 @@ class AppSettingsStore(private val context: Context) {
             p[Keys.periods] = PeriodSchedule.encode(next.periods)
             p[Keys.parityEnabled] = next.parityEnabled
             p[Keys.theme] = next.theme
+            p[Keys.colorPalette] = next.colorPalette.normalizedColorPalette()
             if (next.semesterStartDate == null) p.remove(Keys.semesterStartDate) else p[Keys.semesterStartDate] = next.semesterStartDate
             p[Keys.reminderLeadMinutes] = next.reminderLeadMinutes.coerceIn(0, 120)
             p[Keys.notificationsEnabled] = next.notificationsEnabled
@@ -103,3 +108,5 @@ class AppSettingsStore(private val context: Context) {
         }
     }
 }
+
+private fun String?.normalizedColorPalette(): String = if (this == "purple") "purple" else "green"

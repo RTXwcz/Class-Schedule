@@ -33,7 +33,8 @@ object WidgetSnapshotProvider {
             course.name, location).filter(String::isNotBlank).joinToString(" · ")
     }
 
-    internal fun write(prefs: MutablePreferences, courses: List<EffectiveCourse>, periods: List<LessonPeriod> = PeriodSchedule.defaults) {
+    internal fun write(prefs: MutablePreferences, courses: List<EffectiveCourse>, periods: List<LessonPeriod> = PeriodSchedule.defaults, colorPalette: String = "green") {
+        prefs[WidgetKeys.colorPalette] = if (colorPalette == "purple") "purple" else "green"
         val upcoming = courses.take(3)
         prefs[WidgetKeys.count] = upcoming.size
         upcoming.forEachIndexed { index, effective ->
@@ -57,18 +58,19 @@ object WidgetSnapshotProvider {
         prefs.remove(stringPreferencesKey("schedule_lines"))
     }
 
-    suspend fun update(context: Context, courses: List<EffectiveCourse>, periods: List<LessonPeriod> = PeriodSchedule.defaults) {
+    suspend fun update(context: Context, courses: List<EffectiveCourse>, periods: List<LessonPeriod> = PeriodSchedule.defaults, colorPalette: String = "green") {
         val manager = GlanceAppWidgetManager(context)
         val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, ScheduleWidgetReceiver::class.java))
         ids.forEach { appWidgetId ->
             val id = manager.getGlanceIdBy(appWidgetId)
-            updateAppWidgetState(context, id) { write(it, courses, periods) }
+            updateAppWidgetState(context, id) { write(it, courses, periods, colorPalette) }
             ScheduleWidget.update(context, id)
         }
     }
 }
 
 internal object WidgetKeys {
+    val colorPalette = stringPreferencesKey("color_palette")
     val count = intPreferencesKey("course_count")
     fun time(index: Int) = stringPreferencesKey("course_${index}_time")
     fun name(index: Int) = stringPreferencesKey("course_${index}_name")

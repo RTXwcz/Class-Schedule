@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
@@ -42,6 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -64,13 +67,15 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
     var selectedImage by remember { mutableStateOf<Uri?>(null) }
     var localRecognition by remember { mutableStateOf(false) }
     var confirmJson by remember { mutableStateOf(false) }
-    var mode by remember { mutableStateOf(if (state.importDrafts != null) "图片识别" else "手动填写") }
-    var reviewDismissed by remember { mutableStateOf(false) }
+    var mode by rememberSaveable { mutableStateOf(if (state.importDrafts != null) "图片识别" else "手动填写") }
+    var reviewDismissed by rememberSaveable { mutableStateOf(false) }
+    var handledEntryKey by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var manualType by remember { mutableStateOf<String?>(null) }
     var showJson by remember { mutableStateOf(false) }
     LaunchedEffect(entryRequestKey) {
-        if (entryRequestKey != null) {
+        if (entryRequestKey != null && handledEntryKey != entryRequestKey) {
+            handledEntryKey = entryRequestKey
             mode = "手动填写"
             manualType = null
             reviewDismissed = true
@@ -124,7 +129,7 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> selectedImage = uri }
     state.importDrafts?.takeIf { showReview }?.let { drafts ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = ::leaveReview) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回图片导入") }
                 Column(Modifier.weight(1f)) {
@@ -137,7 +142,8 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
             ImportReviewScreen(drafts, saving = state.importBusy, imageUri = state.importImageUri, onChange = viewModel::editImportDrafts,
                 parityEnabled = state.settings.parityEnabled,
                 periodCount = state.settings.periods.size,
-                onCancel = { confirmDiscard = true }, onConfirm = viewModel::saveImportDrafts)
+                removed = state.removedImportDraft, onRemove = viewModel::removeImportDraft, onUndoRemove = viewModel::undoImportRemoval,
+                onConfirm = viewModel::saveImportDrafts)
         }
         return
     }

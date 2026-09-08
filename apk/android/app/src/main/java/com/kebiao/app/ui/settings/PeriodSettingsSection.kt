@@ -35,15 +35,16 @@ private fun PeriodEditorDialog(initial: List<LessonPeriod>, minimumPeriods: Int,
     var drafts by remember { mutableStateOf(initial) }
     var pickCount by remember { mutableStateOf(false) }
     var count by remember { mutableIntStateOf(initial.size) }
+    var countMoving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     if (pickCount) AlertDialog(onDismissRequest = { pickCount = false }, title = { Text("每天多少节课") }, text = {
         Column {
             Text("已有课程使用到第 $minimumPeriods 节。", style = MaterialTheme.typography.bodySmall)
-            NumberWheel("节数", minimumPeriods..PeriodSchedule.MAX_PERIODS, count, { count = it }, Modifier.fillMaxWidth())
+            NumberWheel("节数", minimumPeriods..PeriodSchedule.MAX_PERIODS, count, { count = it }, Modifier.fillMaxWidth(), onScrolling = { countMoving = it })
         }
     }, confirmButton = { Button(onClick = {
         drafts = List(count) { drafts.getOrNull(it) ?: LessonPeriod("", "") }; pickCount = false; error = null
-    }) { Text("应用节数") } }, dismissButton = { TextButton(onClick = { pickCount = false }) { Text("取消") } })
+    }, enabled = !countMoving) { Text("应用节数") } }, dismissButton = { TextButton(onClick = { pickCount = false }) { Text("取消") } })
     else AlertDialog(onDismissRequest = onDismiss, title = { Text("编辑每日作息") }, text = {
         LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item {

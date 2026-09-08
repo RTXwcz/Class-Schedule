@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_surface_purple">#211C28</color>
+    <color name="widget_border_purple">#403746</color>
+    <color name="widget_chip_purple">#392D4B</color>
+</resources>

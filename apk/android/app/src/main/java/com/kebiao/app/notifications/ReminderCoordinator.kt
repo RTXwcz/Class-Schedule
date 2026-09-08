@@ -75,7 +75,7 @@ class ReminderCoordinator(
             val upcoming = WidgetSnapshotProvider.upcoming(now, snapshot)
             // Let a zero-minute reminder finish before rebuilding alarms at this course's start.
             scheduler.scheduleWidgetRefresh(upcoming.firstOrNull()?.startsAt?.plusMinutes(1))
-            WidgetSnapshotProvider.update(context, upcoming.map { it.course }, snapshot.settings.periods)
+            WidgetSnapshotProvider.update(context, upcoming.map { it.course }, snapshot.settings.periods, snapshot.settings.colorPalette)
         }
     }
 }

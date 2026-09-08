@@ -19,6 +19,7 @@ data class CourseDraft(
     val teacher: DraftField<String?> = DraftField(null, 0f),
     val weeks: DraftField<String?> = DraftField(null, 0f),
     val courseNote: DraftField<String?> = DraftField(null, 0f),
+    val reviewId: String = java.util.UUID.randomUUID().toString(),
 ) {
     fun confirmAll() = copy(name = name.confirm(), weekday = weekday.confirm(), startPeriod = startPeriod.confirm(), endPeriod = endPeriod.confirm(), weekRule = weekRule.confirm(), building = building.confirm(), room = room.confirm(), locationNote = locationNote.confirm(), teacher = teacher.confirm(), weeks = weeks.confirm(), courseNote = courseNote.confirm())
     fun hasLowConfidenceFields() = listOf(name, weekday, startPeriod, endPeriod, weekRule, building, room).any { it.confidence < 0.8f }

@@ -1,11 +1,13 @@
 package com.kebiao.app.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -21,9 +23,10 @@ import com.kebiao.app.ui.components.*
 import java.time.LocalDate
 
 @Composable
-fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues(), initialSection: String = "课表与提醒") {
+fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues(), initialSection: String = "课表与提醒", onSectionSelected: (String) -> Unit = {}) {
     val state by viewModel.uiState.collectAsState()
     var section by rememberSaveable(initialSection) { mutableStateOf(initialSection) }
+    LaunchedEffect(initialSection) { section = initialSection }
     var editingOverride by remember { mutableStateOf<ScheduleOverride?>(null) }
     var showOverride by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ScheduleOverride?>(null) }
@@ -36,14 +39,24 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("课表与提醒", "图片导入", "AI 连接").forEach { label ->
-                    FilterChip(section == label, { section = label }, label = { Text(label) })
+                    FilterChip(section == label, { section = label; onSectionSelected(label) }, label = { Text(label) })
                 }
             }
         }
         if (section == "课表与提醒") {
             item {
                 SettingsGroup("外观") {
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("配色", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("green" to "松林绿", "purple" to "鸢尾紫").forEach { (value, label) ->
+                            FilterChip(state.settings.colorPalette == value, { viewModel.updateSettings { it.copy(colorPalette = value) } },
+                                label = { Text(label) }, leadingIcon = {
+                                    Box(Modifier.size(16.dp).background(productColorScheme(value, false).primary, CircleShape))
+                                })
+                        }
+                    }
+                    Text("显示模式", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (value, label) ->
                             FilterChip(state.settings.theme == value, { viewModel.updateSettings { it.copy(theme = value) } }, label = { Text(label) })
                         }
@@ -128,13 +141,14 @@ private fun OverrideEditorDialog(initial: ScheduleOverride?, onDismiss: () -> Un
     var date by remember { mutableStateOf(initial?.date ?: LocalDate.now()) }
     var weekday by remember { mutableIntStateOf(initial?.replacementWeekday ?: 1) }
     var note by remember { mutableStateOf(initial?.note.orEmpty()) }
+    var weekdayMoving by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (initial == null) "添加调休" else "编辑调休") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             DateWheelField("调休日期", date, { date = it })
             Text("这一天改上", style = MaterialTheme.typography.titleSmall)
-            NumberWheel("星期", 1..7, weekday, { weekday = it }, Modifier.fillMaxWidth()) { "周${"一二三四五六日"[it - 1]}" }
+            NumberWheel("星期", 1..7, weekday, { weekday = it }, Modifier.fillMaxWidth(), onScrolling = { weekdayMoving = it }) { "周${"一二三四五六日"[it - 1]}" }
             OutlinedTextField(note, { note = it }, label = { Text("备注（可选）") }, singleLine = true)
         }
-    }, confirmButton = { Button(onClick = { onSave(ScheduleOverride(date, weekday, note.trim().ifBlank { null })) }) { Text("保存") } },
+    }, confirmButton = { Button(onClick = { onSave(ScheduleOverride(date, weekday, note.trim().ifBlank { null })) }, enabled = !weekdayMoving) { Text("保存") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }

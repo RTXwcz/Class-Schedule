@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -62,6 +63,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.produceState
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -95,9 +97,16 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
     }
     var editorCourse by remember { mutableStateOf<Course?>(null) }
     var showEditor by remember { mutableStateOf(false) }
-    var expandedWeek by remember { mutableStateOf(false) }
+    var expandedWeek by rememberSaveable { mutableStateOf(false) }
     var allCourses by remember { mutableStateOf(false) }
+    var editorFromAllCourses by remember { mutableStateOf(false) }
+    val allCoursesListState = rememberLazyListState()
     var chooseDate by remember { mutableStateOf(false) }
+    fun closeCourseEditor() {
+        showEditor = false
+        if (editorFromAllCourses) allCourses = true
+        editorFromAllCourses = false
+    }
     val selectedMonday = state.selectedDate.with(DayOfWeek.MONDAY)
     val formatter = remember { DateTimeFormatter.ofPattern("MM/dd") }
     val compactHeight = LocalConfiguration.current.screenHeightDp < 500
@@ -208,13 +217,14 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
     }
     if (chooseDate) DateWheelDialog(state.selectedDate, "跳转到日期", { chooseDate = false }, { viewModel.selectDate(it); chooseDate = false })
     if (allCourses) AlertDialog(onDismissRequest = { allCourses = false }, title = { Text("全部课程") }, text = {
-        LazyColumn(Modifier.heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.heightIn(max = 480.dp).testTag("all-courses-list"), state = allCoursesListState,
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (state.courses.isEmpty()) item { Text("还没有课程，点击下方添加。") }
             if (state.settings.semesterStartDate == null && state.courses.any { it.weeks.isNotEmpty() || (state.settings.parityEnabled && it.weekRule != WeekRule.ALL) }) item {
                 Text("部分课程需要学期开始日期才会显示在周课表中。你可以在此管理它们，或到设置补充学期日期。", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
             }
             items(state.courses.sortedWith(compareBy<Course> { it.weekday }.thenBy { it.startPeriod }), key = { it.id }) { course ->
-                Surface(onClick = { allCourses = false; editorCourse = course; showEditor = true }, color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(16.dp)) {
+                Surface(onClick = { allCourses = false; editorFromAllCourses = true; editorCourse = course; showEditor = true }, color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(16.dp)) {
                     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(course.name, fontWeight = FontWeight.SemiBold)
                         Text("周${"一二三四五六日"[course.weekday - 1]} · 第${course.startPeriod}–${course.endPeriod}节", style = MaterialTheme.typography.bodySmall)
@@ -222,14 +232,14 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
                 }
             }
         }
-    }, confirmButton = { Button(onClick = { allCourses = false; editorCourse = null; showEditor = true }) { Text("添加课程") } }, dismissButton = { TextButton(onClick = { allCourses = false }) { Text("关闭") } })
+    }, confirmButton = { Button(onClick = { allCourses = false; editorFromAllCourses = true; editorCourse = null; showEditor = true }) { Text("添加课程") } }, dismissButton = { TextButton(onClick = { allCourses = false }) { Text("关闭") } })
 
     if (showEditor) {
         CourseEditorDialog(
             initial = editorCourse,
-            onDismiss = { showEditor = false },
-            onSave = { course -> viewModel.addCourse(course); showEditor = false },
-            onDelete = { course -> viewModel.deleteCourse(course.id); showEditor = false },
+            onDismiss = ::closeCourseEditor,
+            onSave = { course -> viewModel.addCourse(course); closeCourseEditor() },
+            onDelete = { course -> viewModel.deleteCourse(course.id); closeCourseEditor() },
             parityEnabled = state.settings.parityEnabled,
             periodCount = state.settings.periods.size,
         )
@@ -318,20 +328,21 @@ fun CourseEditorDialog(
     parityEnabled: Boolean = true,
     periodCount: Int = 12,
 ) {
-    var name by remember(initial) { mutableStateOf(initial?.name.orEmpty()) }
-    var weekday by remember(initial) { mutableStateOf((initial?.weekday ?: 1).toString()) }
-    var start by remember(initial) { mutableStateOf((initial?.startPeriod ?: 1).toString()) }
-    var end by remember(initial) { mutableStateOf((initial?.endPeriod ?: 1).toString()) }
-    var building by remember(initial) { mutableStateOf(initial?.building.orEmpty()) }
-    var room by remember(initial) { mutableStateOf(initial?.room.orEmpty()) }
-    var note by remember(initial) { mutableStateOf(initial?.locationNote.orEmpty()) }
-    var teacher by remember(initial) { mutableStateOf(initial?.teacher.orEmpty()) }
-    var weeks by remember(initial) { mutableStateOf(com.kebiao.app.domain.WeekSelection.format(initial?.weeks.orEmpty())) }
-    var courseNote by remember(initial) { mutableStateOf(initial?.courseNote.orEmpty()) }
-    var weekRule by remember(initial) { mutableStateOf(initial?.weekRule ?: WeekRule.ALL) }
+    var name by rememberSaveable(initial) { mutableStateOf(initial?.name.orEmpty()) }
+    var weekday by rememberSaveable(initial) { mutableStateOf((initial?.weekday ?: 1).toString()) }
+    var start by rememberSaveable(initial) { mutableStateOf((initial?.startPeriod ?: 1).toString()) }
+    var end by rememberSaveable(initial) { mutableStateOf((initial?.endPeriod ?: 1).toString()) }
+    var building by rememberSaveable(initial) { mutableStateOf(initial?.building.orEmpty()) }
+    var room by rememberSaveable(initial) { mutableStateOf(initial?.room.orEmpty()) }
+    var note by rememberSaveable(initial) { mutableStateOf(initial?.locationNote.orEmpty()) }
+    var teacher by rememberSaveable(initial) { mutableStateOf(initial?.teacher.orEmpty()) }
+    var weeks by rememberSaveable(initial) { mutableStateOf(com.kebiao.app.domain.WeekSelection.format(initial?.weeks.orEmpty())) }
+    var courseNote by rememberSaveable(initial) { mutableStateOf(initial?.courseNote.orEmpty()) }
+    var weekRule by rememberSaveable(initial) { mutableStateOf(initial?.weekRule ?: WeekRule.ALL) }
     var menuExpanded by remember { mutableStateOf(false) }
     var choosePeriods by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDiscard by remember { mutableStateOf(false) }
     val parsedWeekday = weekday.toIntOrNull()
     val parsedStart = start.toIntOrNull()
     val parsedEnd = end.toIntOrNull()
@@ -339,8 +350,18 @@ fun CourseEditorDialog(
     val valid = name.isNotBlank() && parsedWeekday in 1..7 && parsedStart in 1..periodCount && parsedEnd in 1..periodCount &&
         parsedStart != null && parsedEnd != null && parsedStart <= parsedEnd && parsedWeeks.isSuccess
 
+    val hasChanges = name != initial?.name.orEmpty() || weekday != (initial?.weekday ?: 1).toString() ||
+        start != (initial?.startPeriod ?: 1).toString() || end != (initial?.endPeriod ?: 1).toString() ||
+        building != initial?.building.orEmpty() || room != initial?.room.orEmpty() || note != initial?.locationNote.orEmpty() ||
+        teacher != initial?.teacher.orEmpty() || weeks != com.kebiao.app.domain.WeekSelection.format(initial?.weeks.orEmpty()) ||
+        courseNote != initial?.courseNote.orEmpty() || weekRule != (initial?.weekRule ?: WeekRule.ALL)
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!choosePeriods && !confirmDelete && !confirmDiscard) {
+                if (hasChanges) confirmDiscard = true else onDismiss()
+            }
+        },
         title = { Text(if (initial == null) "添加课程" else "编辑课程") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -404,15 +425,20 @@ fun CourseEditorDialog(
             }
         },
     )
-    if (choosePeriods) AlertDialog(onDismissRequest = { choosePeriods = false }, title = { Text("选择上课时段") }, text = {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            NumberWheel("星期", 1..7, parsedWeekday ?: 1, { weekday = it.toString() }, Modifier.weight(1f)) { "周${"一二三四五六日"[it - 1]}" }
-            NumberWheel("起始节", 1..periodCount, (parsedStart ?: 1).coerceAtMost(periodCount), { value ->
-                start = value.toString(); if ((end.toIntOrNull() ?: 1) < value) end = value.toString()
-            }, Modifier.weight(1f))
-            NumberWheel("结束节", (parsedStart ?: 1).coerceAtMost(periodCount)..periodCount, (parsedEnd ?: 1).coerceIn((parsedStart ?: 1).coerceAtMost(periodCount), periodCount), { end = it.toString() }, Modifier.weight(1f))
-        }
-    }, confirmButton = { Button(onClick = { choosePeriods = false }) { Text("确定时段") } })
+    if (choosePeriods) CourseTimeDialog(parsedWeekday, parsedStart, parsedEnd, periodCount,
+        onDismiss = { choosePeriods = false },
+        onConfirm = { selectedDay, selectedStart, selectedEnd ->
+            weekday = selectedDay.toString()
+            start = selectedStart.toString()
+            end = selectedEnd.toString()
+            choosePeriods = false
+        })
+    if (confirmDiscard) AlertDialog(
+        onDismissRequest = { confirmDiscard = false }, title = { Text("放弃修改？") },
+        text = { Text("这门课程的修改尚未保存，可以继续编辑。") },
+        confirmButton = { TextButton(onClick = { confirmDiscard = false; onDismiss() }) { Text("放弃修改", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("继续编辑") } },
+    )
     if (confirmDelete && initial != null) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("删除这门课程？") },
         text = { Text("${initial.name} 的每周安排将一并移除。") }, confirmButton = { TextButton(onClick = { onDelete(initial); confirmDelete = false }) { Text("确认删除") } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } })

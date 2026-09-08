@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,13 +24,14 @@ import com.kebiao.app.ui.settings.SettingsScreen
 import com.kebiao.app.ui.timetable.TimetableScreen
 import com.kebiao.app.mcp.McpApprovalDialog
 import com.kebiao.app.ui.settings.OcrChoiceDialog
-import com.kebiao.app.ui.components.ProductDarkColors
-import com.kebiao.app.ui.components.ProductLightColors
+import com.kebiao.app.ui.components.LocalProductColorPalette
+import com.kebiao.app.ui.components.productColorScheme
 import com.kebiao.app.widget.WidgetLaunchRequest
 import com.kebiao.app.widget.WidgetNavigation
 
 @Composable
 fun ScheduleApp(viewModel: AppViewModel, widgetRequest: WidgetLaunchRequest? = null, onWidgetLaunchHandled: () -> Unit = {}) {
+    val pageState = rememberSaveableStateHolder()
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var settingsSection by rememberSaveable { mutableStateOf("课表与提醒") }
     var entryRequestKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -58,32 +60,34 @@ fun ScheduleApp(viewModel: AppViewModel, widgetRequest: WidgetLaunchRequest? = n
             else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
         activity?.enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
     }
-    MaterialTheme(colorScheme = if (dark) ProductDarkColors else ProductLightColors,
-        shapes = Shapes(small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-            medium = androidx.compose.foundation.shape.RoundedCornerShape(20.dp), large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp))) {
-        McpApprovalDialog()
-        if (!deferOnboarding) OcrChoiceDialog(viewModel, onManual = { selectedTab = 2 }, onConfigure = { settingsSection = "图片导入"; selectedTab = 3 })
-        Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbar) },
-            bottomBar = {
-                Column {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                        tabs.forEachIndexed { index, label ->
-                            NavigationBarItem(selected = selectedTab == index, onClick = { selectedTab = index },
-                                icon = { Icon(icons[index], contentDescription = null, modifier = Modifier.size(23.dp)) },
-                                label = { Text(label, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) },
-                                colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant))
+    CompositionLocalProvider(LocalProductColorPalette provides state.settings.colorPalette) {
+        MaterialTheme(colorScheme = productColorScheme(state.settings.colorPalette, dark),
+            shapes = Shapes(small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                medium = androidx.compose.foundation.shape.RoundedCornerShape(20.dp), large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp))) {
+            McpApprovalDialog()
+            if (!deferOnboarding) OcrChoiceDialog(viewModel, onManual = { selectedTab = 2 }, onConfigure = { settingsSection = "图片导入"; selectedTab = 3 })
+            Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbar) },
+                bottomBar = {
+                    Column {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                            tabs.forEachIndexed { index, label ->
+                                NavigationBarItem(selected = selectedTab == index, onClick = { selectedTab = index },
+                                    icon = { Icon(icons[index], contentDescription = null, modifier = Modifier.size(23.dp)) },
+                                    label = { Text(label, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) },
+                                    colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant))
+                            }
                         }
                     }
-                }
-            }) { padding ->
-            when (selectedTab) {
-                0 -> TimetableScreen(viewModel, padding)
-                1 -> ExamCalendarScreen(viewModel, padding)
-                2 -> ImportExportScreen(viewModel, padding, onConfigure = { settingsSection = "图片导入"; selectedTab = 3 }, entryRequestKey = entryRequestKey)
-                else -> SettingsScreen(viewModel, padding, initialSection = settingsSection)
+                }) { padding ->
+                pageState.SaveableStateProvider(selectedTab) { when (selectedTab) {
+                    0 -> TimetableScreen(viewModel, padding)
+                    1 -> ExamCalendarScreen(viewModel, padding)
+                    2 -> ImportExportScreen(viewModel, padding, onConfigure = { settingsSection = "图片导入"; selectedTab = 3 }, entryRequestKey = entryRequestKey)
+                    else -> SettingsScreen(viewModel, padding, initialSection = settingsSection, onSectionSelected = { settingsSection = it })
+                } }
             }
         }
     }
