@@ -99,10 +99,10 @@ class EntryFlowTest {
             vm.addCourse(Course("sports", "体育", 5, 3, 4, building = "体育馆"))
         }
         compose.onNodeWithText("课表", substring = false).performClick()
+        compose.onNodeWithTag("course-block-${vm.uiState.value.courses.single { it.name == "高等数学" }.id}").performScrollTo()
         compose.onNodeWithText("高等数学").assertIsDisplayed()
         screenshot("whole-week")
-        compose.onNodeWithText("展开", substring = false).performClick()
-        compose.onNodeWithText("整周", substring = false).assertIsDisplayed()
+        compose.onNodeWithText("左右看日期 · 上下看节次").assertIsDisplayed()
     }
 
     private fun screenshot(name: String) {

@@ -1,6 +1,7 @@
 package com.kebiao.app.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -45,9 +46,9 @@ class TimetableScreenTest {
         viewModel.addCourse(Course("later", "Physics", 1, 3, 3))
         viewModel.addCourse(Course("other", "Chemistry", 2, 3, 3))
         compose.setContent { MaterialTheme { TimetableScreen(viewModel) } }
-        val firstDay = compose.onNodeWithText("Physics").fetchSemanticsNode().boundsInRoot
-        val secondDay = compose.onNodeWithText("Chemistry").fetchSemanticsNode().boundsInRoot
-        assertEquals(firstDay.top, secondDay.top, 1f)
+        val firstDay = compose.onNodeWithText("Physics").getUnclippedBoundsInRoot()
+        val secondDay = compose.onNodeWithText("Chemistry").getUnclippedBoundsInRoot()
+        assertEquals(firstDay.top.value, secondDay.top.value, 1f)
     }
 
     @Test
@@ -71,13 +72,13 @@ class TimetableScreenTest {
         compose.setContent { MaterialTheme { TimetableScreen(viewModel) } }
 
         compose.onAllNodesWithTag("course-block-triple").assertCountEquals(1)
-        val triple = compose.onNodeWithTag("course-block-triple").fetchSemanticsNode().boundsInRoot
-        val first = compose.onNodeWithTag("course-block-first").fetchSemanticsNode().boundsInRoot
-        val last = compose.onNodeWithTag("course-block-last").fetchSemanticsNode().boundsInRoot
-        assertEquals(first.top, triple.top, 1f)
-        assertEquals(last.bottom, triple.bottom, 1f)
-        assertTrue("Three-period card must span three rows", triple.height > first.height * 2.8f)
-        assertTrue("Three-period card must not cover the next row", triple.height < first.height * 3.2f)
+        val triple = compose.onNodeWithTag("course-block-triple").getUnclippedBoundsInRoot()
+        val first = compose.onNodeWithTag("course-block-first").getUnclippedBoundsInRoot()
+        val last = compose.onNodeWithTag("course-block-last").getUnclippedBoundsInRoot()
+        assertEquals(first.top.value, triple.top.value, 1f)
+        assertEquals(last.bottom.value, triple.bottom.value, 1f)
+        assertTrue("Three-period card must span three rows", (triple.bottom - triple.top).value > (first.bottom - first.top).value * 2.8f)
+        assertTrue("Three-period card must not cover the next row", (triple.bottom - triple.top).value < (first.bottom - first.top).value * 3.2f)
     }
 
     @Test
