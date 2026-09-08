@@ -6,7 +6,9 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 [下载应用](https://github.com/RTXwcz/Class-Schedule/releases/latest) · [使用指南](docs/USAGE.md) · [问题反馈](https://github.com/RTXwcz/Class-Schedule/issues) · [GPL-3.0](LICENSE)
 
-![课表、滚轮日期选择与录入入口](docs/product/1.4/overview.jpg)
+**v1.4.1** 更新了圆角桌面小组件和石墨灰深色模式。[查看效果](docs/product/1.4.1/VERIFICATION.md)
+
+![深色课表与小组件](docs/product/1.4.1/overview.jpg)
 
 ## 课表，按你的节奏
 
@@ -34,8 +36,8 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 | 安装包 | 选择建议 |
 | --- | --- |
-| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.4.0/class-schedule-v1.4.0-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
-| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.4.0/class-schedule-v1.4.0-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
+| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.4.1/class-schedule-v1.4.1-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
+| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.4.1/class-schedule-v1.4.1-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
 
 Release 同时提供源码包和 `SHA256SUMS.txt`。发布包不包含 x86/x86_64，也不包含 OCR 模型权重。
 

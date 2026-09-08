@@ -102,6 +102,7 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
     val formatter = remember { DateTimeFormatter.ofPattern("MM/dd") }
     val compactHeight = LocalConfiguration.current.screenHeightDp < 500
     val rowHeight = if (compactHeight) 48 else 64
+    val heroPalette = nextCoursePalette()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -124,7 +125,7 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
                     .filter { it.course.endPeriod <= state.settings.periods.size }
                     .firstOrNull { it.date.isAfter(today) || PeriodSchedule.end(it.course.endPeriod, state.settings.periods) > currentMoment.toLocalTime() }
                 val heroLead = if (next == null) "暂无即将开始的课程" else if (next.date == today && PeriodSchedule.start(next.course.startPeriod, state.settings.periods) <= currentMoment.toLocalTime()) "正在上课" else "下一节课"
-                Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF214F40), Color(0xFF356E57))), RoundedCornerShape(26.dp))
+                Row(Modifier.fillMaxWidth().background(Brush.linearGradient(heroPalette.take(2)), RoundedCornerShape(26.dp))
                     .clickable { if (next == null && state.courses.isNotEmpty()) allCourses = true else { editorCourse = next?.course; showEditor = true } }
                     .clearAndSetSemantics {
                         contentDescription = "$heroLead，${next?.course?.name ?: "暂无课程，点按添加"}"
@@ -132,13 +133,13 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
                     }
                     .padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text(heroLead, style = MaterialTheme.typography.labelMedium, color = Color(0xFFC5D9CB))
-                        Text(next?.course?.name ?: if (state.courses.isEmpty()) "从第一门课开始" else "课程已经收好", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(next?.course?.let { listOfNotNull(it.building, it.room).joinToString(" · ").ifBlank { "地点待补充" } } ?: if (state.courses.isEmpty()) "手动填写，或导入已有课表" else "在全部课程中查看周次与安排", color = Color(0xFFD6E5DA), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                        Text(heroLead, style = MaterialTheme.typography.labelMedium, color = heroPalette[3])
+                        Text(next?.course?.name ?: if (state.courses.isEmpty()) "从第一门课开始" else "课程已经收好", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = heroPalette[2], maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(next?.course?.let { listOfNotNull(it.building, it.room).joinToString(" · ").ifBlank { "地点待补充" } } ?: if (state.courses.isEmpty()) "手动填写，或导入已有课表" else "在全部课程中查看周次与安排", color = heroPalette[3], style = MaterialTheme.typography.bodySmall, maxLines = 1)
                     }
                     if (next != null) Column(horizontalAlignment = androidx.compose.ui.Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(PeriodSchedule.start(next.course.startPeriod, state.settings.periods).toString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        Text(if (next.date == today) "今天" else next.date.format(formatter), style = MaterialTheme.typography.labelMedium, color = Color(0xFFD6E5DA))
+                        Text(PeriodSchedule.start(next.course.startPeriod, state.settings.periods).toString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, color = heroPalette[2])
+                        Text(if (next.date == today) "今天" else next.date.format(formatter), style = MaterialTheme.typography.labelMedium, color = heroPalette[3])
                     }
                 }
             }

@@ -24,6 +24,7 @@
 - [界面、可选单双周与镜像下载验证](superpowers/verification/2026-09-07-usability-verification.md)
 - [v1.3.0 发布记录](releases/v1.3.0.md)
 - [v1.4.0 发布记录](releases/v1.4.0.md)
+- [v1.4.1 小组件与深色模式](releases/v1.4.1.md)
 - [独立审查、修复与验证](reviews/README.md)
 
 `superpowers/` 下的设计、计划和早期验证文档保留当时上下文；当前构建步骤以 README 和构建说明为准，发布状态以 Releases 为准。

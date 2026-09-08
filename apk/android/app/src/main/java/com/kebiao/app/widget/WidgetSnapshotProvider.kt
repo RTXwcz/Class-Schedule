@@ -39,6 +39,9 @@ object WidgetSnapshotProvider {
         upcoming.forEachIndexed { index, effective ->
             val course = effective.course
             prefs[WidgetKeys.time(index)] = "${effective.date.monthValue}/${effective.date.dayOfMonth} ${PeriodSchedule.start(course.startPeriod, periods)}"
+            prefs[WidgetKeys.clock(index)] = PeriodSchedule.start(course.startPeriod, periods).toString()
+            prefs[WidgetKeys.date(index)] = "${effective.date.monthValue}/${effective.date.dayOfMonth}"
+            prefs[WidgetKeys.weekday(index)] = "周${"一二三四五六日"[effective.date.dayOfWeek.value - 1]}"
             prefs[WidgetKeys.name(index)] = course.name
             prefs[WidgetKeys.location(index)] = listOfNotNull(course.building, course.room, course.locationNote)
                 .filter(String::isNotBlank).joinToString(" ").ifBlank { "地点未填写" }
@@ -47,6 +50,9 @@ object WidgetSnapshotProvider {
             prefs.remove(WidgetKeys.time(index))
             prefs.remove(WidgetKeys.name(index))
             prefs.remove(WidgetKeys.location(index))
+            prefs.remove(WidgetKeys.clock(index))
+            prefs.remove(WidgetKeys.date(index))
+            prefs.remove(WidgetKeys.weekday(index))
         }
         prefs.remove(stringPreferencesKey("schedule_lines"))
     }
@@ -67,4 +73,7 @@ internal object WidgetKeys {
     fun time(index: Int) = stringPreferencesKey("course_${index}_time")
     fun name(index: Int) = stringPreferencesKey("course_${index}_name")
     fun location(index: Int) = stringPreferencesKey("course_${index}_location")
+    fun clock(index: Int) = stringPreferencesKey("course_${index}_clock")
+    fun date(index: Int) = stringPreferencesKey("course_${index}_date")
+    fun weekday(index: Int) = stringPreferencesKey("course_${index}_weekday")
 }

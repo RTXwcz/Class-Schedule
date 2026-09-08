@@ -29,16 +29,19 @@ val ProductLightColors = lightColorScheme(
     surfaceContainerHighest = Color(0xFFDDE5D8), outline = Color(0xFF87988B), outlineVariant = Color(0xFFDCE3D9),
 )
 val ProductDarkColors = darkColorScheme(
-    primary = Color(0xFFA3CDB7), onPrimary = Color(0xFF153B2C),
-    primaryContainer = Color(0xFF2A5140), onPrimaryContainer = Color(0xFFDCECE3),
-    secondary = Color(0xFFD8BE90), secondaryContainer = Color(0xFF51472F), onSecondaryContainer = Color(0xFFF0E5CF),
-    tertiary = Color(0xFFE2AE98), tertiaryContainer = Color(0xFF583E33), onTertiaryContainer = Color(0xFFF5E1D8),
-    background = Color(0xFF141D18), onBackground = Color(0xFFE4EBE1),
-    surface = Color(0xFF1B251E), onSurface = Color(0xFFE4EBE1),
-    surfaceVariant = Color(0xFF354237), onSurfaceVariant = Color(0xFFAFBEB0),
-    surfaceContainerLowest = Color(0xFF111A14), surfaceContainerLow = Color(0xFF222F25),
-    surfaceContainer = Color(0xFF27362B), surfaceContainerHigh = Color(0xFF2E3D31),
-    surfaceContainerHighest = Color(0xFF38493B), outline = Color(0xFF879D8A), outlineVariant = Color(0xFF3E5141),
+    primary = Color(0xFF9EDBC5), onPrimary = Color(0xFF123D30),
+    primaryContainer = Color(0xFF283E36), onPrimaryContainer = Color(0xFFCEF0E2),
+    secondary = Color(0xFFD7C5A4), onSecondary = Color(0xFF392F1E),
+    secondaryContainer = Color(0xFF3A3530), onSecondaryContainer = Color(0xFFF0E1C7),
+    tertiary = Color(0xFFD4B9D9), onTertiary = Color(0xFF39263F),
+    tertiaryContainer = Color(0xFF37313E), onTertiaryContainer = Color(0xFFEADAF0),
+    background = Color(0xFF111315), onBackground = Color(0xFFE8ECEF),
+    surface = Color(0xFF1C1F22), onSurface = Color(0xFFE8ECEF),
+    surfaceVariant = Color(0xFF303539), onSurfaceVariant = Color(0xFFAAB3BA),
+    surfaceContainerLowest = Color(0xFF0D0F11), surfaceContainerLow = Color(0xFF22262A),
+    surfaceContainer = Color(0xFF272C30), surfaceContainerHigh = Color(0xFF2D3338),
+    surfaceContainerHighest = Color(0xFF353C42), outline = Color(0xFF7C8991), outlineVariant = Color(0xFF343C42),
+    surfaceTint = Color(0xFF9EDBC5), inverseSurface = Color(0xFFE8ECEF), inverseOnSurface = Color(0xFF20262A), inversePrimary = Color(0xFF235649),
 )
 
 @Composable
@@ -86,8 +89,14 @@ fun courseColors(name: String): Pair<Color, Color> {
     val dark = MaterialTheme.colorScheme.background.red < .3f
     val light = listOf(0xFFDCECE3 to 0xFF254E3C, 0xFFE6E5F0 to 0xFF514B73, 0xFFF2E6D3 to 0xFF755831,
         0xFFDDEBF0 to 0xFF345868, 0xFFF3E1D9 to 0xFF7A4D3D)
-    val night = listOf(0xFF294637 to 0xFFC3E5D2, 0xFF3C3854 to 0xFFD9D1F3, 0xFF4F432F to 0xFFF0DEB4,
-        0xFF29434F to 0xFFC3E0EC, 0xFF503A30 to 0xFFF3D0C1)
+    val night = listOf(0xFF273D35 to 0xFFC4E5D5, 0xFF343347 to 0xFFD8D3F2, 0xFF40382D to 0xFFEDDCBD,
+        0xFF283A46 to 0xFFC3DEEF, 0xFF433330 to 0xFFF0D0C7)
     val colors = (if (dark) night else light)[Math.floorMod(name.hashCode(), light.size)]
     return Color(colors.first) to Color(colors.second)
 }
+
+/** Keep the next-course panel quiet at night while retaining its hierarchy. */
+@Composable
+fun nextCoursePalette(): List<Color> = if (MaterialTheme.colorScheme.background.red < .3f)
+    listOf(Color(0xFF253830), Color(0xFF202C29), Color(0xFFC7F0DD), Color(0xFFB2C7BD))
+else listOf(Color(0xFF214F40), Color(0xFF356E57), Color.White, Color(0xFFD6E5DA))
