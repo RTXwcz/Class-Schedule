@@ -93,6 +93,17 @@ class FixedTimetableTest {
         assertEquals(heading.top.value, compose.onNodeWithTag("day-header-1").getUnclippedBoundsInRoot().top.value, .5f)
     }
 
+    @Test fun compactZoomUsesNarrowerColumnsAndWrapsTitles() {
+        val vm = fixture()
+        vm.addCourse(Course("compact", "C语言程序设计基础及实验", 1, 1, 2))
+        compose.setContent { ScheduleApp(vm) }
+        compose.onNodeWithText("紧凑", substring = false).assertIsDisplayed().performClick()
+        val compactBounds = compose.onNodeWithTag("course-block-compact").getUnclippedBoundsInRoot()
+        assertTrue(compactBounds.right - compactBounds.left <= 150.dp)
+        compose.onNodeWithTag("course-title-compact", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("录入", substring = false).assertIsDisplayed()
+    }
+
     private fun screenshot(name: String) {
         compose.waitForIdle()
         Thread.sleep(350)

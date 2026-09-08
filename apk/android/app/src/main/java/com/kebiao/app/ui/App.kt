@@ -18,6 +18,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.kebiao.app.ui.calendar.ExamCalendarScreen
 import com.kebiao.app.ui.importexport.ImportExportScreen
 import com.kebiao.app.ui.settings.SettingsScreen
@@ -70,11 +71,11 @@ fun ScheduleApp(viewModel: AppViewModel, widgetRequest: WidgetLaunchRequest? = n
                 bottomBar = {
                     Column {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
-                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                    NavigationBar(modifier = Modifier.height(62.dp), containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                             tabs.forEachIndexed { index, label ->
                                 NavigationBarItem(selected = selectedTab == index, onClick = { selectedTab = index },
-                                    icon = { Icon(icons[index], contentDescription = null, modifier = Modifier.size(23.dp)) },
-                                    label = { Text(label, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) },
+                                    icon = { Icon(icons[index], contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                label = { Text(label, fontSize = 11.sp, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) },
                                     colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                         selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary,
                                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant))
