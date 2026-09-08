@@ -12,8 +12,6 @@ license does not claim exclusive authorship or relicense upstream files.
 | MCP Kotlin SDK 0.15.0 | Apache-2.0 with retained MIT contributions | https://github.com/modelcontextprotocol/kotlin-sdk/tree/0.15.0 (transition terms preserved in `licenses/MCP-Kotlin-SDK-LICENSE.txt`) |
 | ONNX Runtime Android 1.21.1 | MIT, bundled third-party notices | https://github.com/microsoft/onnxruntime/tree/v1.21.1 |
 | OpenCV 4.12.0 | Apache-2.0, bundled third-party components | https://github.com/opencv/opencv/tree/4.12.0 |
-| Capacitor 8.5.1 | MIT | https://github.com/ionic-team/capacitor/tree/8.5.1 |
-| Apache Cordova Android | Apache-2.0 | https://github.com/apache/cordova-android |
 | Gradle Wrapper and Android build tooling | Apache-2.0 and their respective notices | https://github.com/gradle/gradle |
 
 The runtime dependency inventory and embedded notices are in

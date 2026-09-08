@@ -4,8 +4,8 @@
 
 ## 环境与工作流
 
-1. Fork 并克隆仓库，安装 JDK 21、Android SDK 36、Node.js 22+。
-2. 在 `apk/` 执行 `npm ci`、`npm run sync`，再打开 `apk/android`。
+1. Fork 并克隆仓库。Android 开发需 JDK 21、Android SDK 36；Web 测试需 Node.js 22+。
+2. 直接在 Android Studio 打开 `apk/android`，或在该目录运行 Gradle Wrapper。原生构建无需安装 npm 依赖，也无需执行 Capacitor 同步。
 3. 在独立分支开发。原生 Kotlin 源码位于 `apk/android/app/src/main/java/com/kebiao/app/`。
 4. 修改 Web 主页面或数据契约后，执行 `tools/sync-web.ps1` 同步 `apk/www/` 镜像。
 5. 运行与改动相关的测试。日期/周次/调休逻辑应覆盖 `ScheduleResolver`；数据交换改动需同时覆盖 Kotlin 和 Web 契约。

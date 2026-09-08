@@ -25,8 +25,8 @@ android {
         applicationId "com.kebiao.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "1.4.1"
+        versionCode 8
+        versionName "1.4.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -37,6 +37,8 @@ android {
     buildFeatures {
         compose true
     }
+    // Native assets are generated explicitly below. Do not package stale cap-sync output.
+    sourceSets.main.assets.setSrcDirs([])
     splits {
         abi {
             enable true
@@ -67,8 +69,9 @@ android {
     buildTypes {
         release {
             if (System.getenv('CLASS_SCHEDULE_KEYSTORE')) signingConfig signingConfigs.release
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
@@ -103,16 +106,9 @@ tasks.register('exportRuntimeInventory') {
     }
 }
 
-repositories {
-    flatDir{
-        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
-    }
-}
-
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
-    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation platform('androidx.compose:compose-bom:2025.08.00')
     implementation 'androidx.activity:activity-compose:1.10.1'
@@ -139,7 +135,6 @@ dependencies {
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
     coreLibraryDesugaring libs.android.tools.desugar
-    implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     testImplementation 'org.jetbrains.kotlin:kotlin-test:2.4.0'
     testImplementation 'org.jetbrains.kotlin:kotlin-test-junit:2.4.0'
@@ -148,16 +143,4 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     androidTestImplementation platform('androidx.compose:compose-bom:2025.08.00')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
-    implementation project(':capacitor-cordova-android-plugins')
-}
-
-apply from: 'capacitor.build.gradle'
-
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }

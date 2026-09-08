@@ -2,16 +2,10 @@
   "name": "kebiao-app",
   "version": "1.4.1",
   "private": true,
-  "description": "我的课表 · Kotlin/Compose 原生 Android 与 Web/PWA",
+  "description": "我的课表 · 可选 Android 图标与启动图生成工具",
   "license": "GPL-3.0-only",
   "scripts": {
-    "sync": "cap sync android",
-    "open:android": "cap open android"
-  },
-  "dependencies": {
-    "@capacitor/android": "^8.5.1",
-    "@capacitor/cli": "^8.5.1",
-    "@capacitor/core": "^8.5.1"
+    "assets:android": "capacitor-assets generate --android"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5"

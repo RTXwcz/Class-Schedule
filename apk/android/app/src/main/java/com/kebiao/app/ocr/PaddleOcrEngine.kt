@@ -47,7 +47,7 @@ class PaddleOcrEngine(
             try {
                 val result = engine.recognize(bitmap)
                 currentCoroutineContext().ensureActive()
-                result.results.filter { it.text.isNotBlank() }.map { item ->
+                val blocks = result.results.filter { it.text.isNotBlank() }.map { item ->
                     val points = item.box.points
                     OcrTextBlock(
                         text = item.text,
@@ -58,6 +58,23 @@ class PaddleOcrEngine(
                         ),
                     )
                 }
+                // Tiny text in low-resolution screenshots benefits from a second scale. Keep
+                // the original geometry and reliable text: a larger image can also lose glyphs.
+                val refined = if (maxOf(bitmap.width, bitmap.height) <= 1024 && blocks.any { it.confidence < .98f }) {
+                    currentCoroutineContext().ensureActive()
+                    val enlarged = Bitmap.createScaledBitmap(bitmap, bitmap.width * 2, bitmap.height * 2, true)
+                    try {
+                        val alternatives = engine.recognize(enlarged).results.map { item ->
+                            OcrTextBlock(item.text, item.confidence.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f,
+                                OcrSourceBox(item.box.points.minOf { it.x }, item.box.points.minOf { it.y },
+                                    item.box.points.maxOf { it.x }, item.box.points.maxOf { it.y }))
+                        }
+                        OcrTextRefinement.merge(blocks, alternatives, 2f, 2f)
+                    } finally { enlarged.recycle() }
+                } else blocks
+                currentCoroutineContext().ensureActive()
+                val cells = TableGridDetector.detect(bitmap, refined)
+                refined.mapIndexed { index, block -> block.copy(cellBox = cells[index]) }
             } finally {
                 withContext(NonCancellable) { engine.release() }
             }
@@ -110,7 +127,7 @@ class PaddleOcrEngine(
                 block.copy(box = OcrSourceBox(
                     block.box.left * scaleX, block.box.top * scaleY,
                     block.box.right * scaleX, block.box.bottom * scaleY,
-                ))
+                ), cellBox = block.cellBox?.let { OcrSourceBox(it.left * scaleX, it.top * scaleY, it.right * scaleX, it.bottom * scaleY) })
             }
         } finally {
             if (oriented !== decoded) oriented.recycle()

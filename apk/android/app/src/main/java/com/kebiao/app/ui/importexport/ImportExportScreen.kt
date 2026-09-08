@@ -14,6 +14,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +46,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import com.kebiao.app.ui.AppViewModel
 import kotlinx.coroutines.Dispatchers
@@ -47,16 +55,38 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues(), onConfigure: () -> Unit = {}) {
+fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValues(), onConfigure: () -> Unit = {}, entryRequestKey: String? = null) {
     val state by viewModel.uiState.collectAsState()
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     var json by remember { mutableStateOf(viewModel.exportJson()) }
     var status by remember { mutableStateOf<String?>(null) }
     var selectedImage by remember { mutableStateOf<Uri?>(null) }
     var localRecognition by remember { mutableStateOf(false) }
     var confirmJson by remember { mutableStateOf(false) }
-    var mode by remember { mutableStateOf("手动填写") }
+    var mode by remember { mutableStateOf(if (state.importDrafts != null) "图片识别" else "手动填写") }
+    var reviewDismissed by remember { mutableStateOf(false) }
+    var confirmDiscard by remember { mutableStateOf(false) }
     var manualType by remember { mutableStateOf<String?>(null) }
     var showJson by remember { mutableStateOf(false) }
+    LaunchedEffect(entryRequestKey) {
+        if (entryRequestKey != null) {
+            mode = "手动填写"
+            manualType = null
+            reviewDismissed = true
+            selectedImage = null
+            confirmJson = false
+        }
+    }
+    val showReview = state.importDrafts != null && !reviewDismissed && mode == "图片识别"
+    fun leaveReview() { focus.clearFocus(); keyboard?.hide(); reviewDismissed = true }
+    BackHandler(enabled = showReview) { leaveReview() }
+    if (confirmDiscard) AlertDialog(
+        onDismissRequest = { confirmDiscard = false }, title = { Text("放弃此次识别结果？") },
+        text = { Text("未保存的识别内容和校对修改将被清除，已有课表不会改变。") },
+        confirmButton = { TextButton(onClick = { viewModel.cancelImport(); confirmDiscard = false; reviewDismissed = true }, enabled = !state.importBusy) { Text("确认放弃") } },
+        dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("继续保留") } },
+    )
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val readJson = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -93,13 +123,21 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
         }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> selectedImage = uri }
-    state.importDrafts?.let { drafts ->
+    state.importDrafts?.takeIf { showReview }?.let { drafts ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = ::leaveReview) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回图片导入") }
+                Column(Modifier.weight(1f)) {
+                    Text("校对识别结果", style = MaterialTheme.typography.titleMedium)
+                    Text("返回后保留未保存内容", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = { confirmDiscard = true }, enabled = !state.importBusy) { Text("放弃", color = MaterialTheme.colorScheme.error) }
+            }
             state.errorMessage?.let { Text(it, Modifier.padding(16.dp)) }
             ImportReviewScreen(drafts, saving = state.importBusy, imageUri = state.importImageUri, onChange = viewModel::editImportDrafts,
                 parityEnabled = state.settings.parityEnabled,
                 periodCount = state.settings.periods.size,
-                onCancel = viewModel::cancelImport, onConfirm = viewModel::saveImportDrafts)
+                onCancel = { confirmDiscard = true }, onConfirm = viewModel::saveImportDrafts)
         }
         return
     }
@@ -114,7 +152,7 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
                         else "图片将发送至 ${state.settings.openAiEndpoint}，使用模型 ${state.settings.openAiModel}。")
                 }
             },
-            confirmButton = { TextButton(onClick = { selectedImage = null; viewModel.recognizeImage(uri, localRecognition) }) { Text("开始识别") } },
+            confirmButton = { TextButton(onClick = { selectedImage = null; reviewDismissed = false; viewModel.recognizeImage(uri, localRecognition) }) { Text("开始识别") } },
             dismissButton = { TextButton(onClick = { selectedImage = null }) { Text("取消") } },
         )
     }
@@ -159,13 +197,26 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
             Text("手动填写无需下载模型，也无需配置 API。", style = MaterialTheme.typography.bodySmall)
         }
         if (mode == "图片识别") {
+        if (state.importDrafts != null) {
+            OutlinedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("${state.importDrafts!!.size} 门课程待校对", style = MaterialTheme.typography.titleMedium)
+                    Text("刚才的识别与修改已暂存，尚未写入课表。", style = MaterialTheme.typography.bodySmall)
+                    Text("保存或放弃这次结果后，可选择新的图片。", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { reviewDismissed = false }) { Text("继续校对") }
+                        TextButton(onClick = { confirmDiscard = true }, enabled = !state.importBusy) { Text("放弃识别结果") }
+                    }
+                }
+            }
+        }
         Button(onClick = { localRecognition = true; picker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) },
-            enabled = !state.importBusy && state.modelInstalled && !state.modelDownloadBusy && state.settings.useLocalOcr) {
+            enabled = state.importDrafts == null && !state.importBusy && state.modelInstalled && !state.modelDownloadBusy && state.settings.useLocalOcr) {
             Text("选择课表图片 · 本地 OCR")
         }
         if (state.settings.useLocalOcr && !state.modelInstalled) Text(state.modelStatus ?: "本地模型尚未下载")
         if (state.modelDownloadBusy) LinearProgressIndicator(progress = { state.modelProgress }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { localRecognition = false; picker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }, enabled = !state.importBusy && viewModel.hasOpenAiKey()) {
+        Button(onClick = { localRecognition = false; picker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }, enabled = state.importDrafts == null && !state.importBusy && viewModel.hasOpenAiKey()) {
             Text("选择课表图片 · OpenAI")
         }
         if (!viewModel.hasOpenAiKey()) Text("请先在设置中配置 API Key")

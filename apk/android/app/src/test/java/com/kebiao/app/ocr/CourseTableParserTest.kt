@@ -180,6 +180,57 @@ class CourseTableParserTest {
     private fun headers(): List<OcrTextBlock> = listOf("一", "二", "三", "四", "五", "六", "日")
         .mapIndexed { i, day -> block("星期$day", 110f + i * 100, 20f) }
 
+    @Test fun unequalColumnsJoinWrappedNamesWithoutJoiningIndependentCourses() {
+        val titles = listOf("一", "二", "三", "四", "五", "六", "日")
+            .mapIndexed { i, day -> block("星期$day", listOf(140f, 310f, 480f, 600f, 695f, 755f, 805f)[i] - 20, 10f, 40f) }
+        val drafts = parser.parse(titles + (1..6).map { block("$it", 70f, 30f + it * 24, 10f) } + listOf(
+            block("软件设计基础及", 95f, 100f, 90f), block("实验", 125f, 119f, 30f),
+            block("游泳（初级）", 270f, 52f), block("羽毛球（初级）", 268f, 72f, 84f),
+            block("大学生文化素", 439f, 150f, 82f), block("养", 472f, 169f, 16f),
+            block("认识海", 674f, 105f, 42f), block("洋", 687f, 124f, 16f),
+        ))
+        assertEquals(5, drafts.size)
+        assertEquals(1, drafts.single { it.name.value == "软件设计基础及实验" }.weekday.value)
+        assertEquals(3, drafts.single { it.name.value == "大学生文化素养" }.weekday.value)
+        assertEquals(5, drafts.single { it.name.value == "认识海洋" }.weekday.value)
+        assertEquals(2, drafts.count { it.weekday.value == 2 })
+    }
+
+    @Test fun closedCellsDetermineFullPeriodSpanAndDoNotMergeSeparateCells() {
+        val rows = (1..6).map { block("$it", 10f, 60f + it * 30, 20f) }
+        val firstCell = OcrSourceBox(100f, 85f, 200f, 175f)
+        val secondCell = OcrSourceBox(100f, 175f, 200f, 205f)
+        val drafts = parser.parse(headers() + rows + listOf(
+            block("软件设计及", 110f, 115f).copy(cellBox = firstCell),
+            block("实验", 136f, 137f, 28f).copy(cellBox = firstCell),
+            block("实践", 136f, 180f, 28f).copy(cellBox = secondCell),
+        ))
+        assertEquals(2, drafts.size)
+        assertEquals("软件设计及实验", drafts[0].name.value)
+        assertEquals(1, drafts[0].startPeriod.value)
+        assertEquals(3, drafts[0].endPeriod.value)
+        assertEquals("实践", drafts[1].name.value)
+        assertEquals(4, drafts[1].startPeriod.value)
+        assertEquals(4, drafts[1].endPeriod.value)
+    }
+
+    @Test fun missingWeekdayHeaderDoesNotAssignItsCoursesToAdjacentDay() {
+        val draft = parser.parse(headers().filterNot { it.text == "星期二" } + listOf(block("未知星期课程", 210f, 100f))).single()
+        assertNull(draft.weekday.value)
+    }
+
+    @Test fun shortIndependentCourseInSameCellIsNotTreatedAsWrappedSuffix() {
+        val cell = OcrSourceBox(100f, 80f, 200f, 180f)
+        val drafts = parser.parse(headers() + listOf(block("高等数学", 110f, 100f).copy(cellBox = cell),
+            block("英语", 130f, 120f, 40f).copy(cellBox = cell)))
+        assertEquals(listOf("高等数学", "英语"), drafts.map { it.name.value })
+    }
+
+    @Test fun nestedTitleParenthesesArePreserved() {
+        assertEquals("《论语（选读）》", parser.parse("《论语（选读）》").single().name.value)
+        assertEquals("《文献》", parser.parse("《文献>").single().name.value)
+    }
+
     private fun block(text: String, left: Float, top: Float, width: Float = 80f) =
         OcrTextBlock(text, 0.96f, OcrSourceBox(left, top, left + width, top + 20f))
 }

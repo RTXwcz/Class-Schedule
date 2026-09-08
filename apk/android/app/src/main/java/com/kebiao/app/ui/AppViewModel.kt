@@ -90,6 +90,8 @@ class AppViewModel(
                     updateState { copy(courses = data.courses.mapNotNull(::toDomainCourse), exams = data.exams,
                         overrides = data.overrides.mapNotNull(::toDomainOverride),
                         metadata = data.copy(courses = emptyList(), exams = emptyList(), overrides = emptyList()),
+                        modelStatus = if (this.settings.localOcrModel != settings.localOcrModel && !modelDownloadBusy) null else modelStatus,
+                        modelProgress = if (this.settings.localOcrModel != settings.localOcrModel && !modelDownloadBusy) 0f else modelProgress,
                         settings = settings, settingsLoaded = true,
                         modelInstalled = localOcrManager?.isInstalled(modelId(settings.localOcrModel)) == true) }
                 }
@@ -261,7 +263,7 @@ class AppViewModel(
     fun hasOpenAiKey(): Boolean = openAiImporter?.hasApiKey() == true
 
     fun recognizeImage(uri: android.net.Uri, local: Boolean = false) {
-        if (uiState.value.importBusy) return
+        if (uiState.value.importBusy || uiState.value.importDrafts != null) return
         val settings = uiState.value.settings
         updateState { copy(importBusy = true, importDrafts = null, importImageUri = uri, importSource = if (local) "OCR" else "OPENAI",
             importStatus = "正在识别", errorMessage = null) }

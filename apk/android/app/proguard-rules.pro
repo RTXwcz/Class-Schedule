@@ -1,4 +1,14 @@
 # Add project specific ProGuard rules here.
+# Native OCR libraries use JNI class/field lookups. Keep their Java boundary intact;
+# R8 remains free to remove unused app, UI and network implementation code.
+-keep class ai.onnxruntime.** { *; }
+-keep class org.opencv.** { *; }
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
+-keepattributes SourceFile,LineNumberTable
+# Ktor's desktop debugger probe catches Throwable and returns false on Android.
+# These two optional JVM management types do not exist in the Android platform.
+-dontwarn java.lang.management.ManagementFactory
+-dontwarn java.lang.management.RuntimeMXBean
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 #

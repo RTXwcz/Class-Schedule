@@ -1,8 +1,8 @@
 # Corresponding source and dependency sources
 
 The application source, build scripts, Gradle Wrapper and npm lockfile for
-v1.4.1 are available at https://github.com/RTXwcz/Class-Schedule/tree/v1.4.1
-and in `class-schedule-v1.4.1-source.zip` next to its two ARM APKs.
+v1.4.2 are available at https://github.com/RTXwcz/Class-Schedule/tree/v1.4.2
+and in `class-schedule-v1.4.2-source.zip` next to its two ARM APKs.
 For historical v1.3.0 ARM builds, use that release's ARM source attachment;
 its notes identify the packaging commit separately from the original tag.
 No proprietary signing
@@ -23,8 +23,6 @@ Maven repository or Maven Central, usually as `<artifact>-<version>-sources.jar`
 - Kotlin, kotlinx libraries and Ktor: https://repo.maven.apache.org/maven2/,
   https://github.com/JetBrains/kotlin and https://github.com/Kotlin
 - MCP SDK 0.15.0: https://github.com/modelcontextprotocol/kotlin-sdk/tree/0.15.0
-- Capacitor 8.5.1: https://github.com/ionic-team/capacitor/tree/8.5.1
-- Cordova Android 14.0.1: https://github.com/apache/cordova-android/tree/rel/14.0.1
 - Guava ListenableFuture 1.0 (Guava 26.0 Android):
   https://github.com/google/guava/tree/v26.0
 - SLF4J API 2.0.18: https://github.com/qos-ch/slf4j/tree/v_2.0.18

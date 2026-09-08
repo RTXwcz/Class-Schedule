@@ -3,7 +3,7 @@ package com.kebiao.app.ocr
 import com.kebiao.app.domain.model.WeekRule
 
 data class OcrSourceBox(val left: Float, val top: Float, val right: Float, val bottom: Float)
-data class OcrTextBlock(val text: String, val confidence: Float, val box: OcrSourceBox)
+data class OcrTextBlock(val text: String, val confidence: Float, val box: OcrSourceBox, val cellBox: OcrSourceBox? = null)
 data class DraftField<T>(val value: T, val confidence: Float, val sourceBox: OcrSourceBox? = null, val confirmed: Boolean = false) {
     fun confirm(): DraftField<T> = copy(confirmed = true)
 }

@@ -25,11 +25,25 @@ import com.kebiao.app.mcp.McpApprovalDialog
 import com.kebiao.app.ui.settings.OcrChoiceDialog
 import com.kebiao.app.ui.components.ProductDarkColors
 import com.kebiao.app.ui.components.ProductLightColors
+import com.kebiao.app.widget.WidgetLaunchRequest
+import com.kebiao.app.widget.WidgetNavigation
 
 @Composable
-fun ScheduleApp(viewModel: AppViewModel) {
+fun ScheduleApp(viewModel: AppViewModel, widgetRequest: WidgetLaunchRequest? = null, onWidgetLaunchHandled: () -> Unit = {}) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var settingsSection by rememberSaveable { mutableStateOf("课表与提醒") }
+    var entryRequestKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var deferOnboarding by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(widgetRequest?.id) {
+        widgetRequest?.let { request ->
+            if (request.destination == WidgetNavigation.ENTRY) {
+                selectedTab = 2
+                entryRequestKey = request.id
+                deferOnboarding = true
+            } else selectedTab = 0
+            onWidgetLaunchHandled()
+        }
+    }
     val state by viewModel.uiState.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.errorMessage) {
@@ -48,7 +62,7 @@ fun ScheduleApp(viewModel: AppViewModel) {
         shapes = Shapes(small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
             medium = androidx.compose.foundation.shape.RoundedCornerShape(20.dp), large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp))) {
         McpApprovalDialog()
-        OcrChoiceDialog(viewModel, onManual = { selectedTab = 2 }, onConfigure = { settingsSection = "图片导入"; selectedTab = 3 })
+        if (!deferOnboarding) OcrChoiceDialog(viewModel, onManual = { selectedTab = 2 }, onConfigure = { settingsSection = "图片导入"; selectedTab = 3 })
         Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
                 Column {
@@ -68,7 +82,7 @@ fun ScheduleApp(viewModel: AppViewModel) {
             when (selectedTab) {
                 0 -> TimetableScreen(viewModel, padding)
                 1 -> ExamCalendarScreen(viewModel, padding)
-                2 -> ImportExportScreen(viewModel, padding, onConfigure = { settingsSection = "图片导入"; selectedTab = 3 })
+                2 -> ImportExportScreen(viewModel, padding, onConfigure = { settingsSection = "图片导入"; selectedTab = 3 }, entryRequestKey = entryRequestKey)
                 else -> SettingsScreen(viewModel, padding, initialSection = settingsSection)
             }
         }

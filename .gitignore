@@ -1,4 +1,4 @@
-# Node / Capacitor dependencies
+# Optional image-generation tooling
 apk/node_modules/
 
 # Android / Gradle generated files

@@ -13,15 +13,13 @@ class CourseTableParser {
         if (headers.size < 2) return nonempty.filterNot { headerDay(it.text) != null || isAxisLabel(it.text) }
             .map { draft(listOf(it), null, null, null) }
 
-        val columnStep = headers.zipWithNext().map { (a, b) ->
-            (b.block.centerX - a.block.centerX) / (b.day - a.day)
-        }.sorted().let { it[it.size / 2] }
-        val leftEdge = headers.first().block.centerX - columnStep / 2
         val headerBottom = headers.maxOf { it.block.box.bottom }
-        val rows = nonempty.filter { it.box.right < leftEdge && it.box.top > headerBottom && it.confidence >= 0.6f }
+        val rows = nonempty.filter { it.box.right < headers.first().block.box.left && it.box.top > headerBottom && it.confidence >= 0.6f }
             .mapNotNull { block -> axisPeriods(block.text)?.let { Row(it.first, it.second, block) } }
             .sortedBy { it.block.centerY }
         val trustedRows = rows.takeIf { it.size >= 2 && it.zipWithNext().all { (a, b) -> a.end < b.start } }.orEmpty()
+        val leftEdge = trustedRows.maxOfOrNull { it.block.box.right + 1f }
+            ?: (headers.first().block.centerX - (headers[1].block.centerX - headers[0].block.centerX) / 2)
         val rowStep = trustedRows.zipWithNext().map { (a, b) -> b.block.centerY - a.block.centerY }
             .sorted().let { if (it.isEmpty()) null else it[it.size / 2] }
 
@@ -30,8 +28,13 @@ class CourseTableParser {
             block.box.top > headerBottom && block.box.right >= leftEdge &&
                 headerDay(block.text) == null && block.text.trim() !in setOf("节次", "时间", "上午", "下午", "晚上", "日期")
         }.forEach { block ->
-            val column = headers.minByOrNull { abs(it.block.centerX - block.centerX) }
-                ?.takeIf { abs(it.block.centerX - block.centerX) <= columnStep * 0.5f }
+            val nearest = headers.minByOrNull { abs(it.block.centerX - block.centerX) }
+            val rightEdge = headers.last().block.centerX + (headers.last().block.centerX - headers[headers.lastIndex - 1].block.centerX) / 2
+            val column = headers.firstOrNull { header -> header.block.cellBox?.let { block.centerX in it.left..it.right } == true }
+                ?: nearest?.takeIf { block.centerX in leftEdge..rightEdge &&
+                    // A detected cell in an unrecognized header column must stay unknown.
+                    (block.cellBox == null || it.block.cellBox == null || block.cellBox.left == it.block.cellBox.left) &&
+                    belongsToKnownDay(block.centerX, it, headers) }
             cells.getOrPut(column) { mutableListOf() }.add(block)
         }
 
@@ -39,17 +42,18 @@ class CourseTableParser {
             val groups = mutableListOf<MutableList<OcrTextBlock>>()
             content.sortedWith(compareBy<OcrTextBlock> { it.box.top }.thenBy { it.box.left }).forEach { block ->
                 val previous = groups.lastOrNull()
-                val row = rowAt(block, trustedRows, rowStep)
-                val priorRow = previous?.firstOrNull()?.let { rowAt(it, trustedRows, rowStep) }
                 val gap = previous?.lastOrNull()?.let { block.box.top - it.box.bottom } ?: Float.MAX_VALUE
                 val close = gap <= max(rowStep ?: 0f, block.height * 3f)
-                val continuesCell = previous != null && close &&
-                    (isDetail(block.text) || (row != null && row == priorRow))
+                val sameCell = previous?.lastOrNull()?.let { prior -> prior.cellBox == null || block.cellBox == null || prior.cellBox == block.cellBox } ?: false
+                val continuesCell = previous != null && sameCell && close &&
+                    (isDetail(block.text) || continuesTitle(previous.last(), block))
                 if (continuesCell) previous!!.add(block) else groups.add(mutableListOf(block))
             }
             groups.filter { group -> group.any { it.text.lines().any { line -> line.isNotBlank() && !isDetail(line) } } }.map { group ->
-                val firstRow = rowAt(group.first(), trustedRows, rowStep)
-                val lastRow = rowAt(group.last(), trustedRows, rowStep)
+                val cell = group.first().cellBox
+                val enclosed = cell?.let { box -> trustedRows.filter { it.block.centerY > box.top && it.block.centerY < box.bottom } }.orEmpty()
+                val firstRow = enclosed.firstOrNull() ?: rowAt(group.first(), trustedRows, rowStep)
+                val lastRow = enclosed.lastOrNull() ?: rowAt(group.last(), trustedRows, rowStep)
                 draft(group, column, firstRow, lastRow)
             }
         }
@@ -57,8 +61,9 @@ class CourseTableParser {
 
     private fun draft(blocks: List<OcrTextBlock>, header: Header?, firstRow: Row?, lastRow: Row?): CourseDraft {
         val lines = blocks.flatMap { it.text.lines().map(String::trim).filter(String::isNotBlank) }
-        val name = lines.firstOrNull { !isDetail(it) } ?: lines.firstOrNull().orEmpty()
-        val details = lines.filter { it != name }.joinToString("\n")
+        val nameLines = lines.takeWhile { !isDetail(it) }
+        val name = normalizeTitle(nameLines.joinToString("").ifBlank { lines.firstOrNull().orEmpty() })
+        val details = lines.drop(nameLines.size.coerceAtLeast(1)).joinToString("\n")
         val weeks = parseWeeks(details)
         val teacher = lines.firstNotNullOfOrNull { line ->
             Regex("(?:任课教师|授课教师|教师|老师)\\s*[:：]\\s*([^\\s,，;；]+)").find(line)?.groupValues?.get(1)
@@ -72,10 +77,10 @@ class CourseTableParser {
         val end = explicitPeriods?.second ?: when {
             firstRow == null -> null
             firstRow.end > firstRow.start -> firstRow.end
-            lastRow != null && lastRow.end > firstRow.start -> lastRow.end
+            lastRow != null && (lastRow.end > firstRow.start || blocks.first().cellBox != null) -> lastRow.end
             else -> null
         }
-        val geometryConfidence = if (firstRow != null && firstRow.end > firstRow.start) 0.85f else 0.55f
+        val geometryConfidence = if (blocks.first().cellBox != null || (firstRow != null && firstRow.end > firstRow.start)) 0.85f else 0.55f
         val rule = when {
             Regex("单周|周\\s*[（(]?单|\\bodd\\b", RegexOption.IGNORE_CASE).containsMatchIn(details) -> WeekRule.ODD
             Regex("双周|周\\s*[（(]?双|\\beven\\b", RegexOption.IGNORE_CASE).containsMatchIn(details) -> WeekRule.EVEN
@@ -90,7 +95,7 @@ class CourseTableParser {
         }
         val box = OcrSourceBox(blocks.minOf { it.box.left }, blocks.minOf { it.box.top }, blocks.maxOf { it.box.right }, blocks.maxOf { it.box.bottom })
         return CourseDraft(
-            name = DraftField(name, confidence, blocks.first().box),
+            name = DraftField(name, confidence, box),
             weekday = DraftField(explicitDay ?: header?.day, if (explicitDay != null) confidence else if (header != null) minOf(confidence, header.block.confidence, 0.9f) else 0f, header?.block?.box ?: box),
             startPeriod = DraftField(start, if (start == null) 0f else if (explicitPeriods != null) confidence else minOf(confidence, geometryConfidence), firstRow?.block?.box ?: box),
             endPeriod = DraftField(end, if (end == null) 0f else if (explicitPeriods != null) confidence else minOf(confidence, geometryConfidence), lastRow?.block?.box ?: firstRow?.block?.box ?: box),
@@ -102,6 +107,22 @@ class CourseTableParser {
             weeks = DraftField(weeks, if (weeks == null) 0f else confidence, box),
             courseNote = DraftField(details.takeIf { it.isNotBlank() }, confidence, box),
         )
+    }
+
+    private fun normalizeTitle(text: String): String {
+        val result = StringBuilder()
+        var bookDepth = 0
+        var parenthesisDepth = 0
+        text.forEach { char ->
+            if (char == '《') bookDepth++
+            if (char == '(' || char == '（') parenthesisDepth++
+            val isParenthesisClose = char == ')' || char == '）'
+            val normalized = if (bookDepth > 0 && (char == '>' || (isParenthesisClose && parenthesisDepth == 0))) '》' else char
+            if (isParenthesisClose) parenthesisDepth = (parenthesisDepth - 1).coerceAtLeast(0)
+            if (normalized == '》') bookDepth = (bookDepth - 1).coerceAtLeast(0)
+            result.append(normalized)
+        }
+        return result.toString()
     }
 
     private fun parseWeeks(text: String): String? {
@@ -126,15 +147,42 @@ class CourseTableParser {
             candidates.filter { abs(it.block.centerY - anchor.block.centerY) <= max(it.block.height, anchor.block.height) }
                 .distinctBy { it.day }.sortedBy { it.block.centerX }
         }.filter { group ->
-            if (group.size < 3 || !group.zipWithNext().all { (a, b) -> b.day > a.day && b.block.centerX > a.block.centerX }) {
-                false
-            } else {
-                val steps = group.zipWithNext().map { (a, b) -> (b.block.centerX - a.block.centerX) / (b.day - a.day) }
-                val median = steps.sorted()[steps.size / 2]
-                steps.all { abs(it - median) <= median * 0.25f }
-            }
+            group.size >= 3 && group.zipWithNext().all { (a, b) -> b.day > a.day && b.block.centerX > a.block.centerX }
         }
             .maxByOrNull { it.size }.orEmpty()
+    }
+
+    /** Join a wrapped title, while leaving complete neighboring titles as separate drafts. */
+    private fun continuesTitle(previous: OcrTextBlock, next: OcrTextBlock): Boolean {
+        if (isDetail(previous.text) || isDetail(next.text)) return false
+        val gap = next.box.top - previous.box.bottom
+        val lineHeight = max(previous.height, next.height)
+        if (gap !in (-lineHeight * 0.25f)..(lineHeight * 0.6f)) return false
+        val centered = abs(previous.centerX - next.centerX) <= lineHeight
+        val leftAligned = abs(previous.box.left - next.box.left) <= lineHeight * 0.6f
+        if (!centered && !leftAligned) return false
+        val prior = previous.text.trim()
+        val following = next.text.trim()
+        val unclosed = listOf('（' to '）', '(' to ')', '《' to '》', '[' to ']').any { (open, close) -> prior.count { it == open } > prior.count { it == close } }
+        val continuation = prior.endsWith("及") || prior.endsWith("与") || prior.endsWith("和") || unclosed
+        val shortTail = following.length == 1 && prior.length >= 3 && !prior.endsWith("）") && !prior.endsWith(")")
+        val cellWidth = previous.cellBox?.let { it.right - it.left }
+        val fullLine = cellWidth != null && prior.length >= 7 && (previous.box.right - previous.box.left) >= cellWidth * .76f && following.length < prior.length
+        return continuation || shortTail || fullLine
+    }
+
+    private fun belongsToKnownDay(x: Float, header: Header, headers: List<Header>): Boolean {
+        // With a missing weekday and no detected cell, variable column widths make even
+        // interpolated boundaries ambiguous. Keep the day unset for review.
+        if (headers.zipWithNext().any { (a, b) -> b.day - a.day != 1 }) return false
+        val index = headers.indexOf(header)
+        val before = headers.getOrNull(index - 1)
+        val after = headers.getOrNull(index + 1)
+        val leftStep = before?.let { (header.block.centerX - it.block.centerX) / (header.day - it.day) }
+        val rightStep = after?.let { (it.block.centerX - header.block.centerX) / (it.day - header.day) }
+        val left = header.block.centerX - (leftStep ?: rightStep ?: return false) / 2
+        val right = header.block.centerX + (rightStep ?: leftStep)!! / 2
+        return x in left..right
     }
 
     private fun rowAt(block: OcrTextBlock, rows: List<Row>, step: Float?): Row? {

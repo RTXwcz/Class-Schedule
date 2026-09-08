@@ -4,6 +4,12 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.content.Intent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import com.kebiao.app.widget.WidgetNavigation
+import com.kebiao.app.widget.WidgetLaunchRequest
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -27,10 +33,12 @@ import com.kebiao.app.ui.AppViewModel
 import com.kebiao.app.ui.ScheduleApp
 
 class MainActivity : ComponentActivity() {
+    private var widgetRequest by mutableStateOf<WidgetLaunchRequest?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        acceptWidgetIntent(intent)
         val permissions = getSharedPreferences("permission_requests", MODE_PRIVATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
@@ -58,7 +66,21 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            ScheduleApp(viewModel)
+            ScheduleApp(viewModel, widgetRequest, onWidgetLaunchHandled = { widgetRequest = null })
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        acceptWidgetIntent(intent)
+    }
+
+    private fun acceptWidgetIntent(incoming: Intent) {
+        WidgetNavigation.destination(incoming)?.let { destination ->
+            widgetRequest = WidgetLaunchRequest(destination)
+            // Navigation is one-shot; a later configuration recreation must not reset the user's tab.
+            incoming.data = null
         }
     }
 
