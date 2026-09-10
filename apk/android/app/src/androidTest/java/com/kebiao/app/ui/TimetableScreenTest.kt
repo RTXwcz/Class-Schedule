@@ -90,8 +90,9 @@ class TimetableScreenTest {
         compose.setContent { MaterialTheme { TimetableScreen(viewModel) } }
 
         compose.onNodeWithTag("period-13").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("21:40").assertIsDisplayed()
-        compose.onNodeWithText("22:20").assertIsDisplayed()
+        // The next-course strip may repeat the same clock text, so assert the gutter directly.
+        compose.onNodeWithTag("period-start-13").assertIsDisplayed()
+        compose.onNodeWithTag("period-end-13").assertIsDisplayed()
         compose.onNodeWithTag("course-block-late").assertIsDisplayed()
         compose.onNodeWithText("晚间研讨").assertIsDisplayed()
     }

@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -63,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import com.kebiao.app.domain.model.Course
 import com.kebiao.app.domain.model.WeekRule
@@ -96,80 +100,85 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
     fun jumpToDate(date: LocalDate) { viewModel.selectDate(date); gridScrollRequest++ }
     val selectedMonday = state.selectedDate.with(DayOfWeek.MONDAY)
     val formatter = remember { DateTimeFormatter.ofPattern("MM/dd") }
-    val compactHeight = LocalConfiguration.current.screenHeightDp < 500
-    val heroPalette = nextCoursePalette()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         modifier = Modifier.padding(padding).consumeWindowInsets(padding),
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            if (!compactHeight) Column(Modifier.padding(horizontal = 20.dp)) {
-                Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("我的课表", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text(currentMoment.toLocalDate().format(DateTimeFormatter.ofPattern("M月d日 EEEE", java.util.Locale.CHINA)),
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.fillMaxWidth().testTag("timetable-toolbar").padding(horizontal = 14.dp)) {
+                Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("我的课表", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        currentMoment.toLocalDate().format(DateTimeFormatter.ofPattern("M月d日 EEEE", java.util.Locale.CHINA)),
+                        modifier = Modifier.padding(start = 8.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = { gridScale = if (gridScale < .95f) 1f else .70f },
+                        modifier = Modifier.testTag("grid-zoom"),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) { Text(if (gridScale < .95f) "标准" else "紧凑", fontSize = 12.sp) }
+                    IconButton(onClick = { editorCourse = null; showEditor = true }, modifier = Modifier.width(38.dp).height(38.dp)) {
+                        Icon(Icons.Default.Add, "添加课程", Modifier.width(21.dp).height(21.dp), tint = MaterialTheme.colorScheme.primary)
                     }
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                        IconButton(onClick = { chooseDate = true }) { Icon(Icons.Outlined.CalendarMonth, "跳转日期", tint = MaterialTheme.colorScheme.primary) }
+                    IconButton(onClick = { chooseDate = true }, modifier = Modifier.width(38.dp).height(38.dp)) {
+                        Icon(Icons.Outlined.CalendarMonth, "跳转日期", Modifier.width(21.dp).height(21.dp))
                     }
+                }
+                Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    IconButton(onClick = { jumpToDate(state.selectedDate.minusWeeks(1)) }, modifier = Modifier.width(32.dp).height(32.dp)) {
+                        Icon(Icons.Outlined.ChevronLeft, "上一周", Modifier.width(20.dp).height(20.dp))
+                    }
+                    Text(
+                        "${selectedMonday.format(formatter)} — ${selectedMonday.plusDays(6).format(formatter)}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                    IconButton(onClick = { jumpToDate(state.selectedDate.plusWeeks(1)) }, modifier = Modifier.width(32.dp).height(32.dp)) {
+                        Icon(Icons.Outlined.ChevronRight, "下一周", Modifier.width(20.dp).height(20.dp))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { jumpToDate(LocalDate.now()) }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("今天", fontSize = 12.sp) }
+                    TextButton(onClick = { allCourses = true }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("全部课程 · ${state.courses.size}", fontSize = 12.sp) }
                 }
                 val today = currentMoment.toLocalDate()
-                val next = (0L..7L).asSequence().flatMap { offset -> viewModel.effectiveCourses(today.plusDays(offset)).asSequence() }
+                val next = (0L..7L).asSequence()
+                    .flatMap { offset -> viewModel.effectiveCourses(today.plusDays(offset)).asSequence() }
                     .filter { it.course.endPeriod <= state.settings.periods.size }
                     .firstOrNull { it.date.isAfter(today) || PeriodSchedule.end(it.course.endPeriod, state.settings.periods) > currentMoment.toLocalTime() }
-                val heroLead = if (next == null) "暂无即将开始的课程" else if (next.date == today && PeriodSchedule.start(next.course.startPeriod, state.settings.periods) <= currentMoment.toLocalTime()) "正在上课" else "下一节课"
-                Row(Modifier.fillMaxWidth().background(Brush.linearGradient(heroPalette.take(2)), RoundedCornerShape(22.dp))
-                    .clickable { if (next == null && state.courses.isNotEmpty()) allCourses = true else { editorCourse = next?.course; showEditor = true } }
-                    .clearAndSetSemantics {
-                        contentDescription = "$heroLead，${next?.course?.name ?: "暂无课程，点按添加"}"
-                        onClick("打开课程") { if (next == null && state.courses.isNotEmpty()) allCourses = true else { editorCourse = next?.course; showEditor = true }; true }
-                    }
-                    .padding(horizontal = 14.dp, vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(heroLead, style = MaterialTheme.typography.labelMedium, color = heroPalette[3])
-                        Text(next?.course?.name ?: if (state.courses.isEmpty()) "从第一门课开始" else "课程已经收好", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = heroPalette[2], maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(next?.course?.let { listOfNotNull(it.building, it.room).joinToString(" · ").ifBlank { "地点待补充" } } ?: if (state.courses.isEmpty()) "手动填写，或导入已有课表" else "在全部课程中查看周次与安排", color = heroPalette[3], style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                    }
-                    if (next != null) Column(horizontalAlignment = androidx.compose.ui.Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(PeriodSchedule.start(next.course.startPeriod, state.settings.periods).toString(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, color = heroPalette[2])
-                        Text(if (next.date == today) "今天" else next.date.format(formatter), style = MaterialTheme.typography.labelMedium, color = heroPalette[3])
+                if (next != null) {
+                    val ongoing = next.date == today && PeriodSchedule.start(next.course.startPeriod, state.settings.periods) <= currentMoment.toLocalTime()
+                    val place = listOfNotNull(next.course.building, next.course.room).joinToString(" ")
+                    Surface(
+                        onClick = { editorCourse = next.course; showEditor = true },
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    ) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Text(
+                                PeriodSchedule.start(next.course.startPeriod, state.settings.periods).toString(),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                "  ${if (ongoing) "正在上课" else "下一节课"} · ${next.course.name}" + if (place.isNotBlank()) " · $place" else "",
+                                modifier = Modifier.weight(1f),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (next.date != today) Text(next.date.format(formatter), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
-            }
-            else Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("我的课表", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                IconButton(onClick = { jumpToDate(state.selectedDate.minusWeeks(1)) }) { Icon(Icons.Outlined.ChevronLeft, "上一周") }
-                Text("${selectedMonday.format(formatter)} — ${selectedMonday.plusDays(6).format(formatter)}", style = MaterialTheme.typography.titleSmall)
-                IconButton(onClick = { jumpToDate(state.selectedDate.plusWeeks(1)) }) { Icon(Icons.Outlined.ChevronRight, "下一周") }
-                TextButton(onClick = { jumpToDate(LocalDate.now()) }) { Text("今天") }
-                TextButton(onClick = { allCourses = true }) { Text("全部课程 · ${state.courses.size}") }
-                IconButton(onClick = { editorCourse = null; showEditor = true }) { Icon(Icons.Default.Add, "添加课程", tint = MaterialTheme.colorScheme.primary) }
-                IconButton(onClick = { chooseDate = true }) { Icon(Icons.Outlined.CalendarMonth, "跳转日期") }
-            }
-            val weekCount = (0..6).sumOf { viewModel.effectiveCourses(selectedMonday.plusDays(it.toLong())).size }
-            if (!compactHeight) {
-            Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 0.dp), horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    IconButton(onClick = { jumpToDate(state.selectedDate.minusWeeks(1)) }) { Icon(Icons.Outlined.ChevronLeft, "上一周") }
-                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                        Text("${selectedMonday.format(formatter)} — ${selectedMonday.plusDays(6).format(formatter)}", style = MaterialTheme.typography.titleSmall)
-                        Text("$weekCount 次课程", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    IconButton(onClick = { jumpToDate(state.selectedDate.plusWeeks(1)) }) { Icon(Icons.Outlined.ChevronRight, "下一周") }
-                }
-                Row {
-                    TextButton(onClick = { jumpToDate(LocalDate.now()) }) { Text("今天") }
-                }
-            }
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 0.dp, bottom = 0.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("左右看日期 · 上下看节次", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FilterChip(gridScale < .95f, { gridScale = if (gridScale < .95f) 1f else .70f }, label = { Text(if (gridScale < .95f) "标准" else "紧凑") })
-                TextButton(onClick = { allCourses = true }) { Text("全部课程 · ${state.courses.size}") }
-                IconButton(onClick = { editorCourse = null; showEditor = true }) { Icon(Icons.Default.Add, "添加课程", tint = MaterialTheme.colorScheme.primary) }
-            }
             }
             TimetableGrid(
                 monday = selectedMonday, selectedDate = state.selectedDate,

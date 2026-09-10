@@ -84,8 +84,8 @@ internal fun ScheduleWidgetContent() {
         .background(ImageProvider(if (purple) R.drawable.widget_surface_purple else R.drawable.widget_surface)).cornerRadius(28.dp)
         // At the minimum height, preserve safe horizontal space inside the 28dp corners.
         // Keep vertical space for CJK font padding instead of clipping location/date baselines.
-        .clickable(open).padding(horizontal = if (dense) 16.dp else if (compact) 14.dp else 18.dp,
-            vertical = if (dense) 2.dp else if (compact) 6.dp else if (spacious) 18.dp else 14.dp)) {
+        .clickable(open).padding(horizontal = if (dense) 18.dp else if (compact) 16.dp else 20.dp,
+            vertical = if (dense) 3.dp else if (compact) 7.dp else if (spacious) 17.dp else 15.dp)) {
         if (count == 0) {
             Column(GlanceModifier.fillMaxSize().clickable(open), verticalAlignment = Alignment.Vertical.CenterVertically) {
                 Text("我的课表", modifier = GlanceModifier.clickable(open), style = TextStyle(color = accent, fontSize = (if (dense) 9 else if (compact) 11 else 12).sp, fontWeight = FontWeight.Medium), maxLines = 1)

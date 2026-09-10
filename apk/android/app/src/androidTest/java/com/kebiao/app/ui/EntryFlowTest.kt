@@ -102,7 +102,7 @@ class EntryFlowTest {
         compose.onNodeWithTag("course-block-${vm.uiState.value.courses.single { it.name == "高等数学" }.id}").performScrollTo()
         compose.onNodeWithText("高等数学").assertIsDisplayed()
         screenshot("whole-week")
-        compose.onNodeWithText("左右看日期 · 上下看节次").assertIsDisplayed()
+        compose.onNodeWithTag("timetable-toolbar").assertIsDisplayed()
     }
 
     private fun screenshot(name: String) {

@@ -59,7 +59,8 @@ class FixedTimetableTest {
         val period = compose.onNodeWithTag("period-13").getUnclippedBoundsInRoot()
         assertEquals(headerTop.value, header.top.value, 1f)
         assertEquals(gutterLeft.value, period.left.value, 1f)
-        // Card has a deliberate 2dp inset inside its column/period rectangle.
+        // The card keeps a small inset from its column and row edges; the day header and the
+        // time gutter still line up with the column and row the card belongs to.
         assertEquals(header.left.value + 2f, course.left.value, 1f)
         assertEquals(period.top.value + 2f, course.top.value, 1f)
         compose.onNodeWithTag("course-block-late").performClick()
