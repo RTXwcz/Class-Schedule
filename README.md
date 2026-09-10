@@ -6,10 +6,6 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 [下载应用](https://github.com/RTXwcz/Class-Schedule/releases/latest) · [使用指南](docs/USAGE.md) · [问题反馈](https://github.com/RTXwcz/Class-Schedule/issues) · [GPL-3.0](LICENSE)
 
-**v1.5.2** 收紧课表间距，紧凑档以更窄列宽折行显示，底部导航更简洁；左右滑动看日期、上下滑动看节次。[查看效果与验证](docs/product/1.5.2/VERIFICATION.md)
-
-![固定尺寸课表与双向滚动](docs/product/1.5.2/fixed-grid.jpg)
-
 ## 课表，按你的节奏
 
 - **可选配色**：在设置中选择松林绿或鸢尾紫，各自支持跟随系统、浅色和深色；小组件同步配色。
