@@ -1,8 +1,10 @@
 package com.kebiao.app.ui.timetable
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -32,11 +34,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +51,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kebiao.app.domain.WeekSelection
@@ -54,9 +60,19 @@ import com.kebiao.app.domain.model.EffectiveCourse
 import com.kebiao.app.domain.model.WeekRule
 import com.kebiao.app.notifications.LessonPeriod
 import com.kebiao.app.ui.components.courseColors
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.ceil
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlinx.coroutines.delay
 
 /** Side padding between the grid and its viewport, counted when a whole week is fitted. */
 internal val GRID_SIDE_PADDING = 6.dp
@@ -219,25 +235,45 @@ internal fun TimetableGrid(
 
     val zoomCallback = rememberUpdatedState(onPinchZoom)
     val widthSource = rememberUpdatedState(courseWidth)
+    val flingScope = remember { CoroutineScope(Dispatchers.Main.immediate + SupervisorJob()) }
+    DisposableEffect(flingScope) {
+        onDispose {
+            flingScope.cancel()
+        }
+    }
+    val fling = remember { FlingHandle() }
 
     Column(
         modifier
             .padding(horizontal = GRID_SIDE_PADDING)
             .testTag("timetable-grid")
-            // Initial pass: the parent sees the gesture before the scrollable children, so a
-            // two-finger pinch wins while a one-finger drag still pans the grid.
+            // One drag moves both axes at once. The built-in vertical and horizontal scroll
+            // containers each lock onto a single axis, so the gesture is consumed here (Initial
+            // pass, before the children see it) and both scroll states are driven from it. The
+            // containers stay enabled so their semantics, clamping and layout offsets still work.
             .pointerInput(Unit) {
+                val touchSlop = viewConfiguration.touchSlop
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val tracker = VelocityTracker()
                     // The pinch is accumulated inside the gesture: pointer events arrive faster
                     // than recomposition, so scaling the reported width per event would lose most
                     // of the movement.
                     var pinchStart: Dp? = null
                     var accumulated = 1f
+                    var travelled = Offset.Zero
+                    var panning = false
+                    var pinched = false
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    // Only a real new touch stops the glide: this line used to sit at the top of
+                    // the block, which runs again as soon as the gesture ends, so the fling was
+                    // cancelled the moment it started.
+                    fling.job?.cancel()
+                    tracker.addPosition(down.uptimeMillis, down.position)
                     do {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         val pressed = event.changes.count { it.pressed }
                         if (pressed >= 2) {
+                            pinched = true
                             val start = pinchStart ?: widthSource.value.also { pinchStart = it }
                             val factor = event.calculateZoom()
                             if (factor.isFinite() && factor > 0f && factor != 1f) {
@@ -245,13 +281,37 @@ internal fun TimetableGrid(
                                 val target = (start.value * accumulated)
                                     .coerceIn(TimetableZoom.minManual.value, TimetableZoom.maxManual.value)
                                 zoomCallback.value(target.dp)
-                                event.changes.forEach { it.consume() }
                             }
+                            // Two fingers also pan, so a pinch can be aimed at another day without
+                            // lifting both fingers first.
+                            panGrid(horizontal, vertical, event.calculatePan())
+                            event.changes.forEach { it.consume() }
                         } else {
                             pinchStart = null
                             accumulated = 1f
+                            if (pressed == 1) {
+                                val change = event.changes.first { it.pressed }
+                                tracker.addPosition(change.uptimeMillis, change.position)
+                                val delta = change.position - change.previousPosition
+                                if (!panning) {
+                                    travelled += delta
+                                    if (travelled.getDistance() > touchSlop) panning = true
+                                }
+                                if (panning && delta != Offset.Zero) {
+                                    panGrid(horizontal, vertical, delta)
+                                    change.consume()
+                                }
+                            }
                         }
                     } while (event.changes.any { it.pressed })
+                    if (panning && !pinched) {
+                        val velocity = tracker.calculateVelocity()
+                        if (velocity.x != 0f || velocity.y != 0f) {
+                            fling.job = flingScope.launch {
+                                flingGrid(horizontal, vertical, velocity)
+                            }
+                        }
+                    }
                 }
             },
     ) {
@@ -335,6 +395,48 @@ internal fun TimetableGrid(
             }
         }
     }
+}
+
+/**
+ * Drags the grid the way a canvas moves: the pointer delta is applied to both axes, so the
+ * content follows the finger instead of locking onto the dominant axis.
+ */
+private fun panGrid(horizontal: ScrollState, vertical: ScrollState, delta: Offset) {
+    // dispatchRawDelta is used instead of the suspend scrollBy because the gesture and the decay
+    // animation both run inside restricted scopes that only allow immediate scrolls.
+    if (delta.x != 0f) horizontal.dispatchRawDelta(-delta.x)
+    if (delta.y != 0f) vertical.dispatchRawDelta(-delta.y)
+}
+
+/**
+ * Carries the same gesture velocity into both axes so a flick keeps gliding. The decay is
+ * integrated from the elapsed time instead of driven by the frame clock: the grid can be flung
+ * from a plain coroutine, and the glide stays the same on every refresh rate.
+ */
+private suspend fun flingGrid(horizontal: ScrollState, vertical: ScrollState, velocity: Velocity) {
+    var vx = velocity.x
+    var vy = velocity.y
+    var lastNanos = System.nanoTime()
+    while (abs(vx) > FLING_STOP_SPEED || abs(vy) > FLING_STOP_SPEED) {
+        delay(FLING_STEP_MILLIS)
+        val now = System.nanoTime()
+        val seconds = ((now - lastNanos) / 1_000_000_000.0).toFloat().coerceIn(0f, 0.05f)
+        lastNanos = now
+        panGrid(horizontal, vertical, Offset(vx * seconds, vy * seconds))
+        val damping = exp(-seconds / FLING_TIME_CONSTANT)
+        vx *= damping
+        vy *= damping
+    }
+}
+
+/** One glide step, its cut-off speed and how quickly it loses momentum. */
+private const val FLING_STEP_MILLIS = 12L
+private const val FLING_STOP_SPEED = 60f
+private const val FLING_TIME_CONSTANT = 0.28f
+
+/** Holds the running fling so a new touch stops it immediately. */
+private class FlingHandle {
+    var job: Job? = null
 }
 
 /**

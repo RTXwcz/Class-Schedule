@@ -142,6 +142,92 @@ class FixedTimetableTest {
         compose.onNodeWithText("录入", substring = false).assertIsDisplayed()
     }
 
+    @Test fun oneDragPansBothAxesAtOnce() {
+        val vm = fixture()
+        vm.addCourse(Course("diag", "自由平移课程", 1, 1, 1))
+        // Long titles on Tuesday make the column taller than the viewport, so both axes have
+        // somewhere to travel. The drag tier keeps the week wider than the screen.
+        repeat(13) { index ->
+            vm.addCourse(Course("fill-${index + 1}", "长标题用于撑满纵向空间以便验证自由平移是否同时作用于两个方向", 2, index + 1, index + 1))
+        }
+        compose.setContent { ScheduleApp(vm) }
+        compose.onNodeWithTag("grid-zoom").performClick()
+        compose.waitForIdle()
+        val before = compose.onNodeWithTag("course-block-diag").getUnclippedBoundsInRoot()
+        val headingBefore = compose.onNodeWithTag("day-header-1").getUnclippedBoundsInRoot()
+        val gutterBefore = compose.onNodeWithTag("period-1").getUnclippedBoundsInRoot()
+
+        compose.onNodeWithTag("timetable-grid").performTouchInput {
+            swipe(
+                start = center + androidx.compose.ui.geometry.Offset(240f, 320f),
+                end = center + androidx.compose.ui.geometry.Offset(-160f, -420f),
+                durationMillis = 260,
+            )
+        }
+        compose.waitForIdle()
+
+        val after = compose.onNodeWithTag("course-block-diag").getUnclippedBoundsInRoot()
+        assertTrue("horizontal must follow the drag: ${before.left} -> ${after.left}", after.left.value < before.left.value - 1f)
+        assertTrue("vertical must follow the drag: ${before.top} -> ${after.top}", after.top.value < before.top.value - 1f)
+        assertEquals((before.right - before.left).value, (after.right - after.left).value, .5f)
+        // The heading and the time gutter still follow only their own axis.
+        val headingAfter = compose.onNodeWithTag("day-header-1").getUnclippedBoundsInRoot()
+        val gutterAfter = compose.onNodeWithTag("period-1").getUnclippedBoundsInRoot()
+        assertTrue("heading must scroll horizontally", headingAfter.left.value < headingBefore.left.value - 1f)
+        assertEquals(headingBefore.top.value, headingAfter.top.value, .5f)
+        assertTrue("gutter must scroll vertically", gutterAfter.top.value < gutterBefore.top.value - 1f)
+        assertEquals(gutterBefore.left.value, gutterAfter.left.value, .5f)
+    }
+
+    @Test fun aFastFlickGlidesFurtherThanASlowDragOfTheSameDistance() {
+        val vm = fixture()
+        vm.addCourse(Course("flick", "自由平移课程", 1, 1, 2))
+        compose.setContent { ScheduleApp(vm) }
+        compose.onNodeWithTag("grid-zoom").performClick()
+        compose.onNodeWithTag("grid-zoom").performClick() // the widest tier leaves room for a long glide
+        compose.waitForIdle()
+        fun left() = compose.onNodeWithTag("course-block-flick").getUnclippedBoundsInRoot().left.value
+
+        // Both gestures travel the same distance; only the timing differs, so any extra movement
+        // in the second one is the fling that follows the finger.
+        fun drag(steps: Int, millisPerStep: Long, stepPx: Float) {
+            compose.onNodeWithTag("timetable-grid").performTouchInput {
+                val origin = center
+                down(0, origin)
+                repeat(steps) { step ->
+                    advanceEventTime(millisPerStep)
+                    moveTo(0, origin + androidx.compose.ui.geometry.Offset(stepPx * (step + 1), 0f))
+                }
+                up(0)
+            }
+            compose.waitForIdle()
+        }
+
+        // The glide runs on its own coroutine, so wait until the position stops changing instead
+        // of assuming a single idle pass covers it.
+        fun settledLeft(): Float {
+            var previous = left()
+            repeat(60) {
+                Thread.sleep(30)
+                compose.waitForIdle()
+                val current = left()
+                if (kotlin.math.abs(current - previous) < 0.01f) return current
+                previous = current
+            }
+            return previous
+        }
+
+        val start = left()
+        drag(steps = 10, millisPerStep = 50, stepPx = -22f)
+        val slow = start - settledLeft()
+
+        val beforeFlick = left()
+        drag(steps = 5, millisPerStep = 12, stepPx = -44f)
+        val fast = beforeFlick - settledLeft()
+
+        assertTrue("slow=$slow fast=$fast", fast > slow + 80f)
+    }
+
     @Test fun pinchWidensTheWeekAndPinchingBackRestoresTheOverview() {
         val vm = fixture()
         vm.addCourse(Course("pinch", "C语言程序设计基础及实验", 1, 1, 2))
