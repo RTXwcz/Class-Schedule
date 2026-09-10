@@ -177,6 +177,55 @@ class CourseTableParserTest {
         assertNull(draft.locationNote.value)
     }
 
+
+    @Test fun desktopExportWithParityColumnsAndRepeatedPeriodsParsesCleanly() {
+        // Mirrors a 教务导出截图: a lost "一" in 星期一, 单/双 sub-column headings, clock labels in the
+        // time column, and one session printed once per period with teacher, place and a date stamp.
+        val headers = listOf(
+            "星期" to 300f, "星期二" to 640f, "星期三" to 960f, "星期四" to 1280f,
+            "星期五" to 1600f, "星期六" to 1920f, "星期日" to 2240f,
+        ).map { (text, left) -> OcrTextBlock(text, 0.99f, OcrSourceBox(left, 0f, left + 80f, 28f)) }
+        val axis = (1..13).map { period ->
+            OcrTextBlock("$period", 1f, OcrSourceBox(60f, 180f + period * 100f, 90f, 200f + period * 100f))
+        }
+        val clock = listOf("08:00", "08:45", "09:00").mapIndexed { index, text ->
+            OcrTextBlock(text, 1f, OcrSourceBox(110f, 160f + index * 100f, 190f, 180f + index * 100f))
+        }
+        val parity = listOf(
+            OcrTextBlock("单", 1f, OcrSourceBox(520f, 55f, 550f, 85f)),
+            OcrTextBlock("双", 1f, OcrSourceBox(740f, 55f, 770f, 85f)),
+        )
+        val first = OcrSourceBox(513f, 665f, 835f, 855f)
+        val second = OcrSourceBox(513f, 855f, 835f, 1059f)
+        fun cell(text: String, left: Float, top: Float, width: Float, box: OcrSourceBox) =
+            OcrTextBlock(text, 0.96f, OcrSourceBox(left, top, left + width, top + 22f), box)
+        val lesson = listOf(
+            cell("计算机操作系统原理", 520f, 683f, 280f, first),
+            cell("与实践", 610f, 712f, 70f, first),
+            cell("秋冬(第1-8周(2节/周))", 520f, 737f, 200f, first),
+            cell("张三", 560f, 764f, 60f, first),
+            cell("教学楼 2-101", 560f, 790f, 130f, first),
+            cell("2027年01月10日(14:00-16:00)", 520f, 818f, 250f, first),
+            cell("计算机操作系统原理", 520f, 882f, 280f, second),
+            cell("与实践", 610f, 908f, 70f, second),
+            cell("秋冬(第1-8周(2节/周))", 520f, 933f, 200f, second),
+            cell("张三", 560f, 961f, 60f, second),
+            cell("教学楼 2-101", 560f, 987f, 130f, second),
+            cell("2027年01月10日(14:00-16:00)", 520f, 1015f, 250f, second),
+        )
+        val drafts = CourseTableParser().parse((headers + axis + clock + parity + lesson).shuffled(kotlin.random.Random(11)))
+        val draft = drafts.single()
+        assertEquals("计算机操作系统原理与实践", draft.name.value)
+        assertEquals(2, draft.weekday.value)
+        // The two repeated copies of the session span these rows in the fixture geometry.
+        assertEquals(5, draft.startPeriod.value)
+        assertEquals(7, draft.endPeriod.value)
+        assertEquals(WeekRule.EVEN, draft.weekRule.value)
+        assertEquals("张三", draft.teacher.value)
+        assertEquals("教学楼", draft.building.value)
+        assertEquals("2-101", draft.room.value)
+        assertEquals("1-8", draft.weeks.value)
+    }
     private fun headers(): List<OcrTextBlock> = listOf("一", "二", "三", "四", "五", "六", "日")
         .mapIndexed { i, day -> block("星期$day", 110f + i * 100, 20f) }
 
@@ -234,3 +283,8 @@ class CourseTableParserTest {
     private fun block(text: String, left: Float, top: Float, width: Float = 80f) =
         OcrTextBlock(text, 0.96f, OcrSourceBox(left, top, left + width, top + 20f))
 }
+
+
+
+
+

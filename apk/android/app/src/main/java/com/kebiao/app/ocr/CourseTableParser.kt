@@ -10,7 +10,8 @@ class CourseTableParser {
     fun parse(blocks: List<OcrTextBlock>): List<CourseDraft> {
         val nonempty = blocks.filter { it.text.isNotBlank() }
         val headers = findHeaders(nonempty)
-        if (headers.size < 2) return nonempty.filterNot { headerDay(it.text) != null || isAxisLabel(it.text) }
+        val parityColumns = parityColumns(nonempty)
+        if (headers.size < 2) return nonempty.filterNot { headerDay(it.text) != null || isAxisLabel(it.text) || parityOf(it.text) != null }
             .map { draft(listOf(it), null, null, null) }
 
         val headerBottom = headers.maxOf { it.block.box.bottom }
@@ -18,7 +19,9 @@ class CourseTableParser {
             .mapNotNull { block -> axisPeriods(block.text)?.let { Row(it.first, it.second, block) } }
             .sortedBy { it.block.centerY }
         val trustedRows = rows.takeIf { it.size >= 2 && it.zipWithNext().all { (a, b) -> a.end < b.start } }.orEmpty()
-        val leftEdge = trustedRows.maxOfOrNull { it.block.box.right + 1f }
+        // The axis column ends at the first rule the cells expose; the clock labels sit inside it
+        // and must never be read as courses.
+        val leftEdge = trustedRows.maxOfOrNull { row -> (row.block.cellBox?.right ?: row.block.box.right) + 1f }
             ?: (headers.first().block.centerX - (headers[1].block.centerX - headers[0].block.centerX) / 2)
         val rowStep = trustedRows.zipWithNext().map { (a, b) -> b.block.centerY - a.block.centerY }
             .sorted().let { if (it.isEmpty()) null else it[it.size / 2] }
@@ -26,7 +29,7 @@ class CourseTableParser {
         val cells = linkedMapOf<Header?, MutableList<OcrTextBlock>>()
         nonempty.filter { block ->
             block.box.top > headerBottom && block.box.right >= leftEdge &&
-                headerDay(block.text) == null && block.text.trim() !in setOf("节次", "时间", "上午", "下午", "晚上", "日期")
+                headerDay(block.text) == null && !isAxisCaption(block.text) && parityOf(block.text) == null
         }.forEach { block ->
             val nearest = headers.minByOrNull { abs(it.block.centerX - block.centerX) }
             val rightEdge = headers.last().block.centerX + (headers.last().block.centerX - headers[headers.lastIndex - 1].block.centerX) / 2
@@ -39,39 +42,140 @@ class CourseTableParser {
         }
 
         return cells.flatMap { (column, content) ->
-            val groups = mutableListOf<MutableList<OcrTextBlock>>()
-            content.sortedWith(compareBy<OcrTextBlock> { it.box.top }.thenBy { it.box.left }).forEach { block ->
-                val previous = groups.lastOrNull()
-                val gap = previous?.lastOrNull()?.let { block.box.top - it.box.bottom } ?: Float.MAX_VALUE
-                val close = gap <= max(rowStep ?: 0f, block.height * 3f)
-                val sameCell = previous?.lastOrNull()?.let { prior -> prior.cellBox == null || block.cellBox == null || prior.cellBox == block.cellBox } ?: false
-                val continuesCell = previous != null && sameCell && close &&
-                    (isDetail(block.text) || continuesTitle(previous.last(), block))
-                if (continuesCell) previous!!.add(block) else groups.add(mutableListOf(block))
-            }
+            val groups = groupCellBlocks(content, rowStep)
             groups.filter { group -> group.any { it.text.lines().any { line -> line.isNotBlank() && !isDetail(line) } } }.map { group ->
                 val cell = group.first().cellBox
                 val enclosed = cell?.let { box -> trustedRows.filter { it.block.centerY > box.top && it.block.centerY < box.bottom } }.orEmpty()
-                val firstRow = enclosed.firstOrNull() ?: rowAt(group.first(), trustedRows, rowStep)
-                val lastRow = enclosed.lastOrNull() ?: rowAt(group.last(), trustedRows, rowStep)
-                draft(group, column, firstRow, lastRow)
+                val blockFirst = rowAt(group.first(), trustedRows, rowStep)
+                val bodyLast = group.lastOrNull { !sessionStamp(it.text) }?.let { rowAt(it, trustedRows, rowStep) }
+                // One session repeated per period: the last repeated title is where the session ends.
+                val repeatLast = group.lastOrNull { it !== group.first() && sameCourseTitle(group, it) }
+                    ?.let { rowAt(it, trustedRows, rowStep) }
+                val firstRow = listOfNotNull(blockFirst, enclosed.firstOrNull()).minByOrNull { it.start }
+                val lastRow = repeatLast ?: listOfNotNull(bodyLast, enclosed.lastOrNull()).maxByOrNull { it.end }
+                draft(group, column, firstRow, lastRow, parityFor(group.first().box, parityColumns))
             }
         }
     }
 
-    private fun draft(blocks: List<OcrTextBlock>, header: Header?, firstRow: Row?, lastRow: Row?): CourseDraft {
+    /**
+     * Blocks of one detected cell belong to one course: the cell is the table's own structure, and
+     * a place or teacher line must not become a course of its own. Blocks without cells keep the
+     * text heuristics, and a second title inside one cell still starts a new course while the cell
+     * has no detail lines yet.
+     */
+    private fun groupCellBlocks(content: List<OcrTextBlock>, rowStep: Float?): List<MutableList<OcrTextBlock>> {
+        val groups = mutableListOf<MutableList<OcrTextBlock>>()
+        val ordered = content.sortedWith(compareBy<OcrTextBlock> { it.box.top }.thenBy { it.box.left })
+        ordered.forEachIndexed { index, block ->
+            val next = ordered.getOrNull(index + 1)
+            val previous = groups.lastOrNull()
+            val last = previous?.lastOrNull()
+            val groupCell = previous?.firstNotNullOfOrNull { it.cellBox }
+            val gap = last?.let { block.box.top - it.box.bottom } ?: Float.MAX_VALUE
+            val close = gap <= max(rowStep ?: 0f, block.height * 3f)
+            val sameCell = last?.cellBox == null || block.cellBox == null || last.cellBox == block.cellBox
+            val continues = when {
+                previous == null || last == null -> false
+                isCourseDetail(block, previous, next) -> close && (sameCell || groupCell != null)
+                continuesTitle(last, block) -> sameCell
+                // The export repeats one session once per period, so the identical title in the next
+                // row is the same course; a different title starts the next one.
+                groupHasDetails(previous) && close && sameCourseTitle(previous, block) -> true
+                else -> false
+            }
+            if (continues && previous != null) previous.add(block) else groups.add(mutableListOf(block))
+        }
+        return groups
+    }
+
+    private fun groupHasDetails(group: List<OcrTextBlock>): Boolean =
+        group.any { block -> block.text.lines().any { it.isNotBlank() && isDetail(it) } }
+
+    private fun groupHasSchedule(group: List<OcrTextBlock>): Boolean =
+        group.any { block ->
+            block.text.lines().any { line ->
+                isDetail(line) || sessionStamp(line) || Regex("\\d\\s*节\\s*/\\s*周").containsMatchIn(line)
+            }
+        }
+
+    /** Lines that belong to the course already open: weeks, teacher, place, session stamp. */
+    private fun isCourseDetail(block: OcrTextBlock, group: List<OcrTextBlock>, next: OcrTextBlock?): Boolean {
+        val trimmed = block.text.trim()
+        if (isDetail(trimmed) || placeLine(trimmed) != null || sessionStamp(trimmed)) return true
+        // A bare name is only a teacher when the table itself prints it inside the course's cell;
+        // a standalone line is far more likely to be the next course title.
+        val groupCell = group.firstNotNullOfOrNull { it.cellBox }
+        if (!groupHasSchedule(group) || !looksLikeTeacher(trimmed)) return false
+        // One course has one teacher line. A second bare name is the next course title, unless the
+        // week range just above it starts the next repeated period of the same session.
+        val previousIsWeekRange = group.lastOrNull()?.text?.lines()
+            ?.any { it.isNotBlank() && it.contains("周") && !sessionStamp(it) } == true
+        if (groupHasTeacher(group) && !previousIsWeekRange) return false
+        val followedByDetail = next == null || isDetail(next.text) || placeLine(next.text) != null || sessionStamp(next.text)
+        val cellLinked = groupCell != null && (block.cellBox == null || overlapsCell(block.cellBox, groupCell))
+        // Without detected cells the teacher line still sits above the place line.
+        return followedByDetail && (cellLinked || previousIsWeekRange || groupCell == null)
+    }
+
+    private fun overlapsCell(a: OcrSourceBox, b: OcrSourceBox): Boolean =
+        a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+
+    private fun groupHasTeacher(group: List<OcrTextBlock>): Boolean =
+        group.withIndex().drop(1).any { (index, block) ->
+            // A wrapped title is not a teacher line, however much it looks like a name.
+            val previous = group[index - 1]
+            !continuesTitle(previous, block) &&
+                block.text.lines().any { line ->
+                    Regex("(?:任课教师|授课教师|教师|老师)").containsMatchIn(line) || looksLikeTeacher(line)
+                }
+        }
+
+    private fun sameCourseTitle(group: List<OcrTextBlock>, block: OcrTextBlock): Boolean {
+        val title = group.firstOrNull()?.text?.trim().orEmpty()
+        val candidate = block.text.trim()
+        if (title.isEmpty() || candidate.isEmpty()) return false
+        if (title == candidate) return true
+        val shorter = if (title.length <= candidate.length) title else candidate
+        val longer = if (title.length <= candidate.length) candidate else title
+        return shorter.length >= 4 && longer.startsWith(shorter)
+    }
+
+    private fun sessionStamp(text: String): Boolean {
+        val trimmed = text.trim()
+        return Regex("^\\d{4}\\s*年\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日.*$").matches(trimmed) ||
+            Regex("^\\d{1,2}\\s*节\\s*/\\s*周.*$").matches(trimmed) ||
+            Regex("^\\d{1,2}:\\d{2}\\s*[-—–~至]\\s*\\d{1,2}:\\d{2}.*$").matches(trimmed)
+    }
+
+    private fun draft(
+        blocks: List<OcrTextBlock>,
+        header: Header?,
+        firstRow: Row?,
+        lastRow: Row?,
+        parity: WeekRule? = null,
+    ): CourseDraft {
         val lines = blocks.flatMap { it.text.lines().map(String::trim).filter(String::isNotBlank) }
-        val nameLines = lines.takeWhile { !isDetail(it) }
+        val nameLines = lines.takeWhile { line -> !isDetail(line) && placeLine(line) == null && !sessionStamp(line) }
         val name = normalizeTitle(nameLines.joinToString("").ifBlank { lines.firstOrNull().orEmpty() })
         val details = lines.drop(nameLines.size.coerceAtLeast(1)).joinToString("\n")
         val weeks = parseWeeks(details)
         val teacher = lines.firstNotNullOfOrNull { line ->
             Regex("(?:任课教师|授课教师|教师|老师)\\s*[:：]\\s*([^\\s,，;；]+)").find(line)?.groupValues?.get(1)
                 ?: Regex("[\\p{IsHan}]{1,5}老师").find(line)?.value
+        } ?: run {
+            // A teacher is printed after the week range, never before it.
+            val scheduleIndex = lines.indexOfFirst { isDetail(it) }
+            lines.drop((scheduleIndex + 1).coerceAtLeast(nameLines.size.coerceAtLeast(1)))
+                .firstOrNull { line -> looksLikeTeacher(line) }
         }
         val confidence = blocks.minOf { it.confidence }.coerceIn(0f, 1f)
         val explicitDay = weekday(details)
-        val explicitPeriods = period(details)
+        // "2节/周" is the weekly meeting count and "第1-8周" the term range; neither is a period.
+        val periodText = details
+            .replace(Regex("\\d{1,2}\\s*节\\s*/\\s*周"), " ")
+            .replace(Regex("第?\\s*\\d{1,2}\\s*[-~～至到—–]\\s*\\d{1,2}\\s*周"), " ")
+        val explicitPeriods = period(periodText)
         val start = explicitPeriods?.first ?: firstRow?.start
         // Text crossing a numbered row is only a tentative span; a range axis is stronger evidence.
         val end = explicitPeriods?.second ?: when {
@@ -81,18 +185,23 @@ class CourseTableParser {
             else -> null
         }
         val geometryConfidence = if (blocks.first().cellBox != null || (firstRow != null && firstRow.end > firstRow.start)) 0.85f else 0.55f
-        val rule = when {
+        val textRule = when {
             Regex("单周|周\\s*[（(]?单|\\bodd\\b", RegexOption.IGNORE_CASE).containsMatchIn(details) -> WeekRule.ODD
             Regex("双周|周\\s*[（(]?双|\\beven\\b", RegexOption.IGNORE_CASE).containsMatchIn(details) -> WeekRule.EVEN
-            weeks != null || Regex("每周|全周").containsMatchIn(details) -> WeekRule.ALL
             else -> null
         }
+        // A 单/双 column heading is table structure rather than cell text, and it is stronger than
+        // the generic week range the cell prints.
+        val rule = textRule ?: parity ?: if (weeks != null || Regex("每周|全周").containsMatchIn(details)) WeekRule.ALL else null
+        val place = lines.firstNotNullOfOrNull { line -> placeLine(line) }
         val building = lines.firstNotNullOfOrNull { line ->
             Regex("([\\p{IsHan}A-Za-z0-9]+(?:教学楼|实验楼|楼|馆|校区))[A-Za-z]?").find(line)?.value
-        }
-        val room = lines.firstNotNullOfOrNull { line ->
+        } ?: place?.first?.takeIf { it.isNotBlank() }
+        // "东2-204" is one room number: the split place wins over the bare digit group.
+        val room = place?.second?.takeIf { it.isNotBlank() } ?: lines.firstNotNullOfOrNull { line ->
             Regex("(?:教室\\s*[:：]?\\s*)?\\b([A-Za-z]?[0-9]{3,4}[A-Za-z]?)\\b").find(line)?.groupValues?.get(1)
         }
+        val locationNote = if (building == null && room == null) lines.firstOrNull { placeLine(it) != null } else null
         val box = OcrSourceBox(blocks.minOf { it.box.left }, blocks.minOf { it.box.top }, blocks.maxOf { it.box.right }, blocks.maxOf { it.box.bottom })
         return CourseDraft(
             name = DraftField(name, confidence, box),
@@ -102,11 +211,44 @@ class CourseTableParser {
             weekRule = DraftField(rule, if (rule == null) 0f else confidence, box),
             building = DraftField(building, if (building == null) 0f else confidence, box),
             room = DraftField(room, if (room == null) 0f else confidence, box),
-            locationNote = DraftField(null, 0f, box),
+            locationNote = DraftField(locationNote, if (locationNote == null) 0f else confidence, box),
             teacher = DraftField(teacher, if (teacher == null) 0f else confidence, box),
             weeks = DraftField(weeks, if (weeks == null) 0f else confidence, box),
-            courseNote = DraftField(details.takeIf { it.isNotBlank() }, confidence, box),
+            courseNote = DraftField(meaningfulNote(details), confidence, box),
         )
+    }
+
+    /** A bare name between the week range and the place: this table prints teachers without a label. */
+    private fun looksLikeTeacher(line: String): Boolean {
+        val trimmed = line.trim()
+        if (trimmed.length !in 2..12) return false
+        if (Regex("[0-9A-Za-z:：()（）.。\\-—–]").containsMatchIn(trimmed)) return false
+        if (Regex("周|节|课|楼|馆|场|室|区|中心|学院|大学|考试|实验").containsMatchIn(trimmed)) return false
+        // Several teachers are printed as "楼俊超/李梦宇" or "张三、李四".
+        return Regex("^[\\p{IsHan}·]+([/、,，][\\p{IsHan}·]+)*$").matches(trimmed)
+    }
+
+    /** "紫金港东2-204" -> building + room; "紫金港风雨操场（羽毛球场）" -> building only. */
+    private fun placeLine(line: String): Pair<String, String>? {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) return null
+        if (Regex("^\\d{1,2}:\\d{2}").containsMatchIn(trimmed)) return null
+        val tail = Regex("^([\\p{IsHan}]+?)\\s*([A-Za-z]?[0-9][0-9A-Za-z\\-]*)$").find(trimmed)
+        if (tail != null && tail.groupValues[1].isNotEmpty()) return tail.groupValues[1] to tail.groupValues[2]
+        if (trimmed.length <= 24 && Regex("楼|馆|场|校区|教室|实验室|中心").containsMatchIn(trimmed)) {
+            val name = trimmed.replace(Regex("[（(][^）)]*[）)]"), "").trim()
+            if (name.isNotEmpty()) return name to ""
+        }
+        return null
+    }
+
+    /** Session stamps and per-week counts are table metadata; they never become course notes. */
+    private fun meaningfulNote(details: String): String? {
+        val kept = details.lines().filter { line ->
+            val trimmed = line.trim()
+            trimmed.isNotEmpty() && !sessionStamp(trimmed)
+        }
+        return kept.joinToString("\n").takeIf { it.isNotBlank() }
     }
 
     private fun normalizeTitle(text: String): String {
@@ -132,6 +274,8 @@ class CourseTableParser {
         if (expressions.isEmpty()) return null
         val normalized = expressions.joinToString(",").replace(Regex("\\s+"), "")
             .replace(Regex("[~～至到—–]"), "-").replace(Regex("[，、]"), ",")
+            // A session repeated once per period prints its range again; keep it once.
+            .split(",").filter { it.isNotBlank() }.distinct().joinToString(",")
         return normalized.takeIf { runCatching { com.kebiao.app.domain.WeekSelection.parse(it) }.isSuccess }
     }
 
@@ -140,16 +284,39 @@ class CourseTableParser {
     private val OcrTextBlock.centerX get() = (box.left + box.right) / 2
     private val OcrTextBlock.centerY get() = (box.top + box.bottom) / 2
     private val OcrTextBlock.height get() = (box.bottom - box.top).coerceAtLeast(1f)
+    private val OcrTextBlock.width get() = (box.right - box.left).coerceAtLeast(1f)
 
     private fun findHeaders(blocks: List<OcrTextBlock>): List<Header> {
         val candidates = blocks.filter { it.confidence >= 0.65f }.mapNotNull { block -> headerDay(block.text)?.let { Header(it, block) } }
-        return candidates.map { anchor ->
+        val best = candidates.map { anchor ->
             candidates.filter { abs(it.block.centerY - anchor.block.centerY) <= max(it.block.height, anchor.block.height) }
                 .distinctBy { it.day }.sortedBy { it.block.centerX }
         }.filter { group ->
             group.size >= 3 && group.zipWithNext().all { (a, b) -> b.day > a.day && b.block.centerX > a.block.centerX }
         }
             .maxByOrNull { it.size }.orEmpty()
+        if (best.isEmpty()) return best
+        // "星期一" is sometimes read as a bare "星期". The block still holds its column, so it takes
+        // the missing day between its neighbours instead of letting that day's courses fall onto the
+        // neighbouring weekday.
+        val truncated = blocks.filter {
+            it.confidence >= 0.65f && Regex("^(星期|周|礼拜)$").matches(it.text.trim()) &&
+                abs(it.centerY - best.first().block.centerY) <= maxOf(it.height, best.first().block.height)
+        }
+        val filled = best.toMutableList()
+        truncated.forEach { block ->
+            if (filled.any { abs(it.block.centerX - block.centerX) <= maxOf(it.block.width, block.width) }) return@forEach
+            val left = filled.filter { it.block.centerX < block.centerX }.maxByOrNull { it.block.centerX }
+            val right = filled.filter { it.block.centerX > block.centerX }.minByOrNull { it.block.centerX }
+            val day = when {
+                left != null && right != null && right.day - left.day == 2 -> left.day + 1
+                left == null && right != null && right.day > 1 -> right.day - 1
+                right == null && left != null && left.day < 7 -> left.day + 1
+                else -> null
+            }
+            if (day != null) filled += Header(day, block)
+        }
+        return filled.sortedBy { it.block.centerX }
     }
 
     /** Join a wrapped title, while leaving complete neighboring titles as separate drafts. */
@@ -194,7 +361,57 @@ class CourseTableParser {
     private fun headerDay(text: String): Int? =
         if (Regex("(?:星期|周|礼拜)[一二三四五六日天1-7]").matches(text.trim())) weekday(text.trim()) else null
 
-    private fun isAxisLabel(text: String): Boolean = text.trim() in setOf("节次", "时间", "上午", "下午", "晚上", "日期") || axisPeriods(text) != null
+    /**
+     * Labels that belong to the time axis rather than to a course: the period numbers, the day-part
+     * captions, the clock stamps and the sub-column parity headings.
+     */
+    private fun isAxisLabel(text: String): Boolean = isAxisCaption(text) || axisPeriods(text) != null
+
+    /**
+     * Captions that belong to the time axis, the clock stamps and the 单/双 headings. A period line
+     * inside a course cell ("第5-6节") is content, so it is deliberately not part of this set.
+     */
+    private fun isAxisCaption(text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed in setOf(
+                "节次", "时间", "日期", "上午", "下午", "晚上", "早晨", "早上", "清晨", "中午", "傍晚", "夜间", "凌晨",
+                "上", "午", "下", "晚",
+            )
+        ) return true
+        return Regex("^\\d{1,2}:\\d{2}$").matches(trimmed) ||
+            Regex("^\\d{1,2}:\\d{2}\\s*[-—–~至]\\s*\\d{1,2}:\\d{2}$").matches(trimmed)
+    }
+
+    /** The 单 / 双 headings above a day's two sub-columns. */
+    private fun parityOf(text: String): WeekRule? = when (text.trim()) {
+        "单", "单周", "单周课", "单周课程" -> WeekRule.ODD
+        "双", "双周", "双周课", "双周课程" -> WeekRule.EVEN
+        else -> null
+    }
+
+    private data class ParityColumn(val box: OcrSourceBox, val rule: WeekRule)
+
+    private fun parityColumns(blocks: List<OcrTextBlock>): List<ParityColumn> =
+        blocks.mapNotNull { block -> parityOf(block.text)?.let { ParityColumn(block.box, it) } }
+            .sortedBy { it.box.left }
+
+    /**
+     * Which half of a day a block sits in. A lost rule merges the two sub-columns into one detected
+     * cell, so the boundary is taken from the headings themselves.
+     */
+    private fun parityFor(anchor: OcrSourceBox, columns: List<ParityColumn>): WeekRule? {
+        val center = (anchor.left + anchor.right) / 2
+        columns.zipWithNext().forEach { (left, right) ->
+            if (left.rule != WeekRule.ODD || right.rule != WeekRule.EVEN) return@forEach
+            val boundary = (left.box.right + right.box.left) / 2f
+            val slack = maxOf((right.box.left - left.box.right), right.box.width)
+            if (center >= left.box.left - slack && center < boundary) return WeekRule.ODD
+            if (center >= boundary && center <= right.box.right + slack) return WeekRule.EVEN
+        }
+        return null
+    }
+
+    private val OcrSourceBox.width: Float get() = right - left
 
     private fun axisPeriods(text: String): Pair<Int, Int>? {
         val trimmed = text.trim()
@@ -210,7 +427,12 @@ class CourseTableParser {
     }
 
     private fun weekday(text: String): Int? {
-        val value = Regex("(?:星期|周|礼拜)([一二三四五六日天1-7])").find(text)?.groupValues?.get(1) ?: return null
+        // "第1-8周2节/周" must not be read as "周2": the weekly range and the meeting count are not
+        // weekdays, so a 周 whose day digit follows a number is ignored.
+        val value = Regex("(?:星期|礼拜)\\s*([一二三四五六日天1-7])").find(text)?.groupValues?.get(1)
+            ?: Regex("(?<![0-9第])\\s*周\\s*([一二三四五六日天])(?![节周])").find(text)?.groupValues?.get(1)
+            ?: Regex("(?<![0-9第])\\s*周\\s*([1-7])(?![0-9节周/])").find(text)?.groupValues?.get(1)
+            ?: return null
         return mapOf("一" to 1, "二" to 2, "三" to 3, "四" to 4, "五" to 5, "六" to 6, "日" to 7, "天" to 7)[value] ?: value.toIntOrNull()
     }
 
