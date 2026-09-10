@@ -6,9 +6,9 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 [下载应用](https://github.com/RTXwcz/Class-Schedule/releases/latest) · [使用指南](docs/USAGE.md) · [问题反馈](https://github.com/RTXwcz/Class-Schedule/issues) · [GPL-3.0](LICENSE)
 
-**v1.6.0** 同一天连续节次的同一门课自动合并成一张卡片，最窄档按真实列数反算列宽，任何并行课程下七天都整体显示在屏幕内。[查看效果与验证](docs/product/1.6.0/VERIFICATION.md)
+**v1.6.1** 同一天连续节次的同一门课自动合并成一张卡片；最窄档每天固定一列，七天平屏显示，日期、教学楼与教室始终完整，冲突课程在列内逐条列出。[查看效果与验证](docs/product/1.6.1/VERIFICATION.md)
 
-![全览档七天同屏](docs/product/1.6.0/overview-parallel-week.png)
+![全览档每天一列](docs/product/1.6.1/overview-clash-column.png)
 
 ## 课表，按你的节奏
 
@@ -37,8 +37,8 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 | 安装包 | 选择建议 |
 | --- | --- |
-| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.6.0/class-schedule-v1.6.0-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
-| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.6.0/class-schedule-v1.6.0-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
+| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.6.1/class-schedule-v1.6.1-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
+| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.6.1/class-schedule-v1.6.1-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
 
 当前 APK 大小约 **45.15 MiB（ARM64）/ 32.59 MiB（ARMv7）**。模型、课表数据、缓存和系统优化文件另计，不同设备统计会有差异。
 

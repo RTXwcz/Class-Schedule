@@ -82,6 +82,9 @@ internal val GRID_SIDE_PADDING = 6.dp
 private val CARD_INSET = 1.dp
 private val CARD_LINE_GAP = 1.dp
 
+/** Space reserved for the divider that separates two clashing lessons in one overview card. */
+private val CONTENT_SECTION_GAP = 4.dp
+
 /**
  * Presets for the day width. [WEEK] is the overview: the real width is computed by
  * [overviewColumnWidth] so that all seven days land on screen, while the two wider presets are
@@ -116,23 +119,25 @@ internal enum class TimetableZoom(
 }
 
 /**
- * Width of one day column so that the whole week, the six gaps, the axis gutter and the grid
- * padding fit into [gridWidth] exactly. Floored to a whole pixel to keep the last column from being
- * clipped. [columns] counts every lane, so a day with overlapping courses shrinks the columns
- * instead of pushing the last day off screen.
+ * Width of one day so that seven days, six gaps, the axis gutter and the grid padding fit into
+ * [gridWidth] exactly. Floored to a whole pixel to keep the last column from being clipped, and
+ * wide enough for the date and the place lines to stay readable.
  */
-internal fun overviewColumnWidth(gridWidth: Dp, density: Density, columns: Int = 7): Dp = with(density) {
+internal fun overviewColumnWidth(gridWidth: Dp, density: Density): Dp = with(density) {
     val week = TimetableZoom.WEEK
-    val lanes = columns.coerceAtLeast(1)
     val usable = (gridWidth - GRID_SIDE_PADDING * 2 - week.gutterWidth - week.dayGap * 6f).toPx()
-    (usable.toInt() / lanes).coerceAtLeast(24).toDp()
+    (usable.toInt() / 7).coerceAtLeast(38).toDp()
 }
 
 /**
  * One card on the grid. [display] is the span that gets drawn, which can cover several stored
  * entries; [editor] stays the untouched entry so editing never writes a merged span back.
  */
-private data class LessonSpan(val display: Course, val editor: Course)
+private data class LessonSpan(
+    val display: Course,
+    val editor: Course,
+    val extras: List<Course> = emptyList(),
+)
 private data class PlacedCourse(val lesson: LessonSpan, val lane: Int)
 private data class DayGrid(val date: LocalDate, val courses: List<PlacedCourse>, val laneCount: Int)
 
@@ -150,7 +155,6 @@ internal fun TimetableGrid(
     scrollRequest: Int,
     zoom: TimetableZoom = TimetableZoom.WEEK,
     columnWidth: Dp = zoom.columnWidth,
-    onDayColumns: (Int) -> Unit = {},
     onPinchZoom: (Dp) -> Unit = {},
     modifier: Modifier = Modifier,
     onCourseClick: (Course) -> Unit,
@@ -182,22 +186,28 @@ internal fun TimetableGrid(
         2 * measurer.measure("23:59", axisTimeStyle).size.height + with(density) { 6.dp.roundToPx() }
     val minimumRowPixels = maxOf(axisMinimum, with(density) { 44.dp.roundToPx() })
 
-    val grids = remember(monday, days) {
+    // The tier is a key: the overview packs a day into one column while the wider tiers spread the
+    // clashing lessons into lanes, so the layout has to be rebuilt when the tier changes.
+    val grids = remember(monday, days, zoom) {
         days.mapIndexed { offset, effective ->
-            val laneEnds = mutableListOf<Int>()
-            val placed = mergeConsecutiveLessons(effective).map { lesson ->
-                val lane = laneEnds.indexOfFirst { end -> end < lesson.display.startPeriod }
-                    .let { if (it < 0) laneEnds.size else it }
-                if (lane == laneEnds.size) laneEnds += lesson.display.endPeriod else laneEnds[lane] = lesson.display.endPeriod
-                PlacedCourse(lesson, lane)
+            val lessons = mergeConsecutiveLessons(effective)
+            if (zoom == TimetableZoom.WEEK) {
+                // The overview gives every day exactly one column: lessons that clash in time are
+                // listed inside one card instead of widening the day and squeezing the whole week.
+                val collapsed = collapseOverlappingLessons(lessons)
+                DayGrid(monday.plusDays(offset.toLong()), collapsed.map { PlacedCourse(it, 0) }, 1)
+            } else {
+                val laneEnds = mutableListOf<Int>()
+                val placed = lessons.map { lesson ->
+                    val lane = laneEnds.indexOfFirst { end -> end < lesson.display.startPeriod }
+                        .let { if (it < 0) laneEnds.size else it }
+                    if (lane == laneEnds.size) laneEnds += lesson.display.endPeriod else laneEnds[lane] = lesson.display.endPeriod
+                    PlacedCourse(lesson, lane)
+                }
+                DayGrid(monday.plusDays(offset.toLong()), placed, laneEnds.size.coerceAtLeast(1))
             }
-            DayGrid(monday.plusDays(offset.toLong()), placed, laneEnds.size.coerceAtLeast(1))
         }
     }
-    // The overview needs the real column count, including the extra lanes of overlapping days, to
-    // keep the whole week on screen.
-    val dayColumns = grids.sumOf { it.laneCount }
-    SideEffect { onDayColumns(dayColumns) }
 
     // Grow only the periods that actually hold the content. Empty rows stay at the minimum,
     // and every day shares the same boundaries so parallel courses remain aligned.
@@ -207,15 +217,22 @@ internal fun TimetableGrid(
         .sortedBy { it.lesson.display.endPeriod - it.lesson.display.startPeriod }
         .forEach { placed ->
             val course = placed.lesson.display
-            val details = courseDetails(course, parityEnabled, compact = zoom == TimetableZoom.WEEK)
-            val titleHeight = measurer.measure(course.name, titleStyle, constraints = Constraints(maxWidth = textWidth)).size.height
-            val detailsHeight = details.sumOf {
-                measurer.measure(it, detailStyle, constraints = Constraints(maxWidth = textWidth)).size.height
+            val compact = zoom == TimetableZoom.WEEK
+            val contents = listOf(course) + placed.lesson.extras
+            var textHeight = 0
+            var lineCount = 0
+            contents.forEach { item ->
+                textHeight += measurer.measure(item.name, titleStyle, constraints = Constraints(maxWidth = textWidth)).size.height
+                lineCount++
+                courseDetails(item, parityEnabled, compact = compact).forEach { line ->
+                    textHeight += measurer.measure(line, detailStyle, constraints = Constraints(maxWidth = textWidth)).size.height
+                    lineCount++
+                }
             }
             // The card also owns a 1dp inset on every side and a 1dp gap before each detail
             // line; leaving them out makes the tallest title clip by a couple of pixels.
-            val needed = titleHeight + detailsHeight + with(density) {
-                ((CARD_INSET + cardVerticalPadding) * 2 + CARD_LINE_GAP * details.size).roundToPx() + 1
+            val needed = textHeight + with(density) {
+                ((CARD_INSET + cardVerticalPadding) * 2 + CARD_LINE_GAP * (lineCount - 1) + CONTENT_SECTION_GAP * placed.lesson.extras.size).roundToPx() + 1
             }
             val rows = (course.startPeriod - 1) until course.endPeriod
             val deficit = needed - rows.sumOf { rowPixels[it] }
@@ -345,15 +362,33 @@ internal fun TimetableGrid(
                                     ),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(
-                                    "周${"一二三四五六日"[grid.date.dayOfWeek.value - 1]}\n${grid.date.format(formatter)}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontSize = if (courseWidth < 70.dp) 10.sp else 12.sp,
-                                    lineHeight = if (courseWidth < 70.dp) 12.sp else 15.sp,
-                                    textAlign = TextAlign.Center,
-                                    color = if (grid.date == LocalDate.now()) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurface,
-                                )
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    // Two single-line labels: the date must never break into "09/0" + "7".
+                                    val headerColor = if (grid.date == LocalDate.now()) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface
+                                    val headerSize = if (courseWidth < 70.dp) 10.sp else 12.sp
+                                    val headerLine = if (courseWidth < 70.dp) 12.sp else 15.sp
+                                    Text(
+                                        "周${"一二三四五六日"[grid.date.dayOfWeek.value - 1]}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = headerSize,
+                                        lineHeight = headerLine,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        textAlign = TextAlign.Center,
+                                        color = headerColor,
+                                    )
+                                    Text(
+                                        grid.date.format(formatter),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = headerSize,
+                                        lineHeight = headerLine,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        textAlign = TextAlign.Center,
+                                        color = headerColor,
+                                    )
+                                }
                             }
                         }
                     }
@@ -397,8 +432,18 @@ internal fun TimetableGrid(
                                     Modifier.padding(horizontal = cardHorizontalPadding, vertical = cardVerticalPadding),
                                     verticalArrangement = Arrangement.spacedBy(CARD_LINE_GAP),
                                 ) {
+                                    val compact = zoom == TimetableZoom.WEEK
                                     Text(course.name, style = titleStyle, modifier = Modifier.testTag("course-title-${course.id}"))
-                                    courseDetails(course, parityEnabled, compact = zoom == TimetableZoom.WEEK).forEach { Text(it, style = detailStyle) }
+                                    courseDetails(course, parityEnabled, compact = compact).forEach { Text(it, style = detailStyle) }
+                                    placed.lesson.extras.forEach { extra ->
+                                        // A clash in the overview: the second lesson keeps its own
+                                        // name and place under a thin divider.
+                                        Box(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                                        }
+                                        Text(extra.name, style = titleStyle)
+                                        courseDetails(extra, parityEnabled, compact = compact).forEach { line -> Text(line, style = detailStyle) }
+                                    }
                                 }
                             }
                         }
@@ -489,6 +534,33 @@ private fun sameLesson(a: Course, b: Course): Boolean =
         a.weeks == b.weeks &&
         a.weekRule == b.weekRule &&
         a.courseNote == b.courseNote
+
+/**
+ * Folds lessons that clash in time into one card, keeping every name and place. The overview shows
+ * a single column per day, so a clash must not widen the day; the wider tiers still draw the lanes
+ * side by side, which is why the stored entries are untouched here as well.
+ */
+private fun collapseOverlappingLessons(lessons: List<LessonSpan>): List<LessonSpan> {
+    val groups = mutableListOf<LessonSpan>()
+    lessons.sortedBy { it.display.startPeriod }.forEach { lesson ->
+        val overlapping = groups.filter { it.display.endPeriod >= lesson.display.startPeriod }
+        if (overlapping.isEmpty()) {
+            groups += lesson
+        } else {
+            groups.removeAll(overlapping)
+            val members = (overlapping.flatMap { listOf(it.display) + it.extras } + lesson.display)
+                .sortedBy { it.startPeriod }
+            val head = members.first()
+            val editor = overlapping.firstOrNull { it.display.id == head.id }?.editor ?: lesson.editor
+            groups += LessonSpan(
+                display = head.copy(endPeriod = members.maxOf { it.endPeriod }),
+                editor = editor,
+                extras = members.drop(1),
+            )
+        }
+    }
+    return groups.sortedBy { it.display.startPeriod }
+}
 
 /**
  * Only real values become lines, so a course without a room does not reserve empty space.

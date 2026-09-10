@@ -92,9 +92,6 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
     var gridScrollRequest by rememberSaveable { mutableIntStateOf(0) }
     // -1 means "overview": the column width is derived from the viewport so seven days fit.
     var gridColumnWidth by rememberSaveable { mutableFloatStateOf(-1f) }
-    // How many day columns the current week really needs; overlapping days add lanes, and the
-    // overview has to fit them all.
-    var weekColumns by remember { mutableIntStateOf(7) }
     val gridZoom = when {
         gridColumnWidth < 0f -> TimetableZoom.WEEK
         gridColumnWidth < 110f -> TimetableZoom.STANDARD
@@ -226,18 +223,15 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                 val density = LocalDensity.current
                 // The overview width is measured here so all seven days fit the viewport on any
-                // screen size and with any number of parallel courses; the wider presets keep the
-                // width the user picked or pinched.
-                val overviewWidth = remember(maxWidth, density, weekColumns) {
-                    overviewColumnWidth(maxWidth, density, weekColumns)
-                }
+                // screen size; clashing lessons share a column instead of widening the day, so the
+                // date and the place lines stay readable.
+                val overviewWidth = remember(maxWidth, density) { overviewColumnWidth(maxWidth, density) }
                 val effectiveWidth = if (gridColumnWidth < 0f) overviewWidth else gridColumnWidth.dp
                 TimetableGrid(
                     monday = selectedMonday, selectedDate = state.selectedDate,
                     days = (0..6).map { viewModel.effectiveCourses(selectedMonday.plusDays(it.toLong())) },
                     periods = state.settings.periods, parityEnabled = state.settings.parityEnabled,
                     scrollRequest = gridScrollRequest, zoom = gridZoom, columnWidth = effectiveWidth,
-                    onDayColumns = { columns -> if (columns != weekColumns) weekColumns = columns },
                     onPinchZoom = { width ->
                         // Pinching back out to the overview width snaps to the exact overview so the
                         // whole week is visible instead of a few pixels off screen.

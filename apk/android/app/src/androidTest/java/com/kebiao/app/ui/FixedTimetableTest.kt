@@ -143,6 +143,32 @@ class FixedTimetableTest {
         compose.onNodeWithText("录入", substring = false).assertIsDisplayed()
     }
 
+    @Test fun clashingLessonsShareOneDayColumnInTheOverview() {
+        val vm = fixture()
+        vm.addCourse(Course("c1", "游泳（初级）", 2, 1, 2, building = "体育馆", room = "游泳池"))
+        vm.addCourse(Course("c2", "羽毛球（初级）", 2, 1, 2, building = "体育馆", room = "2号场"))
+        compose.setContent { ScheduleApp(vm) }
+
+        // The overview keeps one column per day: the clash is listed inside the day, not beside it.
+        val tuesday = compose.onNodeWithTag("day-header-2").getUnclippedBoundsInRoot()
+        val monday = compose.onNodeWithTag("day-header-1").getUnclippedBoundsInRoot()
+        assertEquals((monday.right - monday.left).value, (tuesday.right - tuesday.left).value, 1f)
+        (1..7).forEach { compose.onNodeWithTag("day-header-$it").assertIsDisplayed() }
+        compose.onAllNodesWithText("游泳（初级）").onFirst().assertIsDisplayed()
+        compose.onAllNodesWithText("羽毛球（初级）").onFirst().assertIsDisplayed()
+        compose.onAllNodesWithText("体育馆 游泳池").onFirst().assertIsDisplayed()
+        compose.onAllNodesWithText("体育馆 2号场").onFirst().assertIsDisplayed()
+        val clashCard = compose.onNodeWithTag("course-block-c1").getUnclippedBoundsInRoot()
+        assertTrue("the card must stay one column wide: ${clashCard.right - clashCard.left}", clashCard.right - clashCard.left < tuesday.right - tuesday.left)
+        screenshot("overview-clash-column")
+
+        // The wider tiers still draw the clash side by side.
+        compose.onNodeWithTag("grid-zoom").performClick()
+        compose.waitForIdle()
+        val lanes = compose.onNodeWithTag("day-header-2").getUnclippedBoundsInRoot()
+        assertTrue("two lanes=${lanes.right - lanes.left}", lanes.right - lanes.left > 150.dp)
+    }
+
     @Test fun theOverviewKeepsAllSevenDaysOnScreenEvenWithParallelCourses() {
         val vm = fixture()
         // Two lanes on Monday and three on Wednesday: the week needs ten columns in total, and the
