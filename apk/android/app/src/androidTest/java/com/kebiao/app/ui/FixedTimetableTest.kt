@@ -30,9 +30,12 @@ class FixedTimetableTest {
         vm.addCourse(Course("c", "大学生思想文化素养", 1, 1, 3))
         compose.setContent { ScheduleApp(vm) }
         screenshot("fixed-grid-readable")
-        compose.onNodeWithTag("course-block-long").assertWidthIsAtLeast(180.dp)
-        compose.onNodeWithTag("course-block-b").assertWidthIsAtLeast(180.dp)
-        compose.onNodeWithTag("course-block-c").assertWidthIsAtLeast(180.dp)
+        // The overview fits a whole week; the drag tier keeps three overlapping courses readable.
+        compose.onNodeWithTag("grid-zoom").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("course-block-long").assertWidthIsAtLeast(88.dp)
+        compose.onNodeWithTag("course-block-b").assertWidthIsAtLeast(88.dp)
+        compose.onNodeWithTag("course-block-c").assertWidthIsAtLeast(88.dp)
         compose.onNodeWithTag("course-title-long", useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { get ->
             val result = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
             assertTrue(get(result))
@@ -74,8 +77,21 @@ class FixedTimetableTest {
 
     @Test fun fingerSwipesMoveEachAxisWithoutChangingCourseWidth() {
         val vm = fixture()
-        vm.addCourse(Course("drag", "可滑动的完整课程名称", 1, 1, 1))
+        // A long title on every period keeps the column taller than any test viewport, so the
+        // vertical axis is genuinely scrollable instead of depending on the emulator height.
+        for (period in 1..13) {
+            vm.addCourse(Course(
+                if (period == 1) "drag" else "fill-$period",
+                "可滑动的完整课程名称用于验证纵向滚动可以正常发生",
+                1,
+                period,
+                period,
+            ))
+        }
         compose.setContent { ScheduleApp(vm) }
+        // Panning needs a week that is wider than the screen, which is the drag tier.
+        compose.onNodeWithTag("grid-zoom").performClick()
+        compose.waitForIdle()
         val initial = compose.onNodeWithTag("course-block-drag").getUnclippedBoundsInRoot()
         val heading = compose.onNodeWithTag("day-header-1").getUnclippedBoundsInRoot()
         compose.onNodeWithTag("timetable-horizontal").performTouchInput { swipeLeft() }
@@ -94,15 +110,86 @@ class FixedTimetableTest {
         assertEquals(heading.top.value, compose.onNodeWithTag("day-header-1").getUnclippedBoundsInRoot().top.value, .5f)
     }
 
-    @Test fun compactZoomUsesNarrowerColumnsAndWrapsTitles() {
+    @Test fun overviewShowsTheWholeWeekAndPresetsWidenIt() {
         val vm = fixture()
         vm.addCourse(Course("compact", "C语言程序设计基础及实验", 1, 1, 2))
         compose.setContent { ScheduleApp(vm) }
-        compose.onNodeWithText("紧凑", substring = false).assertIsDisplayed().performClick()
-        val compactBounds = compose.onNodeWithTag("course-block-compact").getUnclippedBoundsInRoot()
-        assertTrue(compactBounds.right - compactBounds.left <= 150.dp)
-        compose.onNodeWithTag("course-title-compact", useUnmergedTree = true).assertIsDisplayed()
+        // Default is the overview: seven days, one screen, no dragging required.
+        compose.onNodeWithText("全览", substring = false).assertIsDisplayed()
+        (1..7).forEach { compose.onNodeWithTag("day-header-$it").assertIsDisplayed() }
+        val week = compose.onNodeWithTag("course-block-compact").getUnclippedBoundsInRoot()
+        assertTrue("week=${week.right - week.left}", week.right - week.left <= 56.dp)
+        compose.onNodeWithTag("course-title-compact", useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { get ->
+            val result = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            assertTrue(get(result))
+            assertFalse("Week zoom must wrap rather than clip", result.single().hasVisualOverflow)
+        }
+        screenshot("fixed-grid-week-zoom")
+
+        compose.onNodeWithTag("grid-zoom").performClick()
+        compose.onNodeWithText("标准", substring = false).assertIsDisplayed()
+        val standard = compose.onNodeWithTag("course-block-compact").getUnclippedBoundsInRoot()
+        assertTrue("standard=${standard.right - standard.left}", standard.right - standard.left in 86.dp..96.dp)
+
+        compose.onNodeWithTag("grid-zoom").performClick()
+        compose.onNodeWithText("宽松", substring = false).assertIsDisplayed()
+        val comfortable = compose.onNodeWithTag("course-block-compact").getUnclippedBoundsInRoot()
+        assertTrue("comfortable=${comfortable.right - comfortable.left}", comfortable.right - comfortable.left >= 124.dp)
+
+        compose.onNodeWithTag("grid-zoom").performClick()
+        compose.onNodeWithText("全览", substring = false).assertIsDisplayed()
+        compose.onNodeWithTag("day-header-7").assertIsDisplayed()
         compose.onNodeWithText("录入", substring = false).assertIsDisplayed()
+    }
+
+    @Test fun pinchWidensTheWeekAndPinchingBackRestoresTheOverview() {
+        val vm = fixture()
+        vm.addCourse(Course("pinch", "C语言程序设计基础及实验", 1, 1, 2))
+        compose.setContent { ScheduleApp(vm) }
+        val overview = compose.onNodeWithTag("course-block-pinch").getUnclippedBoundsInRoot()
+
+        compose.onNodeWithTag("timetable-grid").performTouchInput {
+            val middle = center
+            down(0, middle + androidx.compose.ui.geometry.Offset(-30f, 0f))
+            down(1, middle + androidx.compose.ui.geometry.Offset(30f, 0f))
+            repeat(4) {
+                advanceEventTime(16)
+                val spread = 30f + 20f * (it + 1)
+                moveTo(0, middle + androidx.compose.ui.geometry.Offset(-spread, 0f))
+                moveTo(1, middle + androidx.compose.ui.geometry.Offset(spread, 0f))
+            }
+            up(0)
+            up(1)
+        }
+        compose.waitForIdle()
+        val widened = compose.onNodeWithTag("course-block-pinch").getUnclippedBoundsInRoot()
+        assertTrue(
+            "pinch out must widen the column: ${overview.right - overview.left} -> ${widened.right - widened.left}",
+            widened.right - widened.left > (overview.right - overview.left) * 1.5f,
+        )
+        compose.onNodeWithText("全览", substring = false).assertDoesNotExist()
+
+        compose.onNodeWithTag("timetable-grid").performTouchInput {
+            val middle = center
+            down(0, middle + androidx.compose.ui.geometry.Offset(-110f, 0f))
+            down(1, middle + androidx.compose.ui.geometry.Offset(110f, 0f))
+            repeat(4) {
+                advanceEventTime(16)
+                val spread = 110f - 24f * (it + 1)
+                moveTo(0, middle + androidx.compose.ui.geometry.Offset(-spread, 0f))
+                moveTo(1, middle + androidx.compose.ui.geometry.Offset(spread, 0f))
+            }
+            up(0)
+            up(1)
+        }
+        compose.waitForIdle()
+        val restored = compose.onNodeWithTag("course-block-pinch").getUnclippedBoundsInRoot()
+        assertTrue(
+            "pinching back out must return to the fitted week: ${restored.right - restored.left}",
+            restored.right - restored.left <= overview.right - overview.left + 1.dp,
+        )
+        compose.onNodeWithText("全览", substring = false).assertIsDisplayed()
+        compose.onNodeWithTag("day-header-7").assertIsDisplayed()
     }
 
     private fun screenshot(name: String) {

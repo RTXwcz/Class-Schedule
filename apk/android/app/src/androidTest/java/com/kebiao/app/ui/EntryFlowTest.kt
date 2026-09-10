@@ -53,7 +53,9 @@ class EntryFlowTest {
         val vm = AppViewModel()
         compose.setContent { ScheduleApp(vm) }
         compose.onNodeWithText("设置", substring = false).performClick()
-        compose.onNodeWithText("编辑作息").performClick()
+        // Short screens (Android 7 / 640dp tall) need the settings list scrolled before the tap
+        // lands on the row instead of the empty space below the fold.
+        compose.onNodeWithText("编辑作息").performScrollTo().performClick()
         compose.onNodeWithText("调整节数").performClick()
         repeat(10) { wheelStep("wheel-节数", "减少节数") }
         compose.onNodeWithText("应用节数").performClick()

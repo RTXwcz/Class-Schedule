@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
@@ -65,6 +66,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,7 +90,13 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
     var editorCourse by remember { mutableStateOf<Course?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var gridScrollRequest by rememberSaveable { mutableIntStateOf(0) }
-    var gridScale by rememberSaveable { mutableFloatStateOf(1f) }
+    // -1 means "overview": the column width is derived from the viewport so seven days fit.
+    var gridColumnWidth by rememberSaveable { mutableFloatStateOf(-1f) }
+    val gridZoom = when {
+        gridColumnWidth < 0f -> TimetableZoom.WEEK
+        gridColumnWidth < 110f -> TimetableZoom.STANDARD
+        else -> TimetableZoom.COMFORTABLE
+    }
     var allCourses by remember { mutableStateOf(false) }
     var editorFromAllCourses by remember { mutableStateOf(false) }
     val allCoursesListState = rememberLazyListState()
@@ -118,10 +127,15 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
                     )
                     Spacer(Modifier.weight(1f))
                     TextButton(
-                        onClick = { gridScale = if (gridScale < .95f) 1f else .70f },
-                        modifier = Modifier.testTag("grid-zoom"),
+                        onClick = {
+                            val next = gridZoom.next
+                            gridColumnWidth = if (next == TimetableZoom.WEEK) -1f else next.columnWidth.value
+                        },
+                        modifier = Modifier
+                            .testTag("grid-zoom")
+                            .semantics { contentDescription = "课表缩放：${gridZoom.label}，可双指捏合调整" },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    ) { Text(if (gridScale < .95f) "标准" else "紧凑", fontSize = 12.sp) }
+                    ) { Text(gridZoom.label, fontSize = 12.sp) }
                     IconButton(onClick = { editorCourse = null; showEditor = true }, modifier = Modifier.width(38.dp).height(38.dp)) {
                         Icon(Icons.Default.Add, "添加课程", Modifier.width(21.dp).height(21.dp), tint = MaterialTheme.colorScheme.primary)
                     }
@@ -157,35 +171,74 @@ fun TimetableScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingVal
                     Surface(
                         onClick = { editorCourse = next.course; showEditor = true },
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                     ) {
-                        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            Text(
-                                PeriodSchedule.start(next.course.startPeriod, state.settings.periods).toString(),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                "  ${if (ongoing) "正在上课" else "下一节课"} · ${next.course.name}" + if (place.isNotBlank()) " · $place" else "",
-                                modifier = Modifier.weight(1f),
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (next.date != today) Text(next.date.format(formatter), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                                Text(
+                                    PeriodSchedule.start(next.course.startPeriod, state.settings.periods).toString(),
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    if (next.date == today) "今天" else next.date.format(formatter),
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    if (ongoing) "正在上课" else "下一节课",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    next.course.name,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (place.isNotBlank()) {
+                                    Text(
+                                        place,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
-            TimetableGrid(
-                monday = selectedMonday, selectedDate = state.selectedDate,
-                days = (0..6).map { viewModel.effectiveCourses(selectedMonday.plusDays(it.toLong())) },
-                periods = state.settings.periods, parityEnabled = state.settings.parityEnabled,
-                scrollRequest = gridScrollRequest, scale = gridScale, modifier = Modifier.fillMaxWidth().weight(1f),
-            ) { course -> editorCourse = course; showEditor = true }
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                val density = LocalDensity.current
+                // The overview width is measured here so all seven days fit the viewport on any
+                // screen size; the wider presets keep the width the user picked or pinched.
+                val overviewWidth = remember(maxWidth, density) { overviewColumnWidth(maxWidth, density) }
+                val effectiveWidth = if (gridColumnWidth < 0f) overviewWidth else gridColumnWidth.dp
+                TimetableGrid(
+                    monday = selectedMonday, selectedDate = state.selectedDate,
+                    days = (0..6).map { viewModel.effectiveCourses(selectedMonday.plusDays(it.toLong())) },
+                    periods = state.settings.periods, parityEnabled = state.settings.parityEnabled,
+                    scrollRequest = gridScrollRequest, zoom = gridZoom, columnWidth = effectiveWidth,
+                    onPinchZoom = { width ->
+                        // Pinching back out to the overview width snaps to the exact overview so the
+                        // whole week is visible instead of a few pixels off screen.
+                        gridColumnWidth = if (width.value <= overviewWidth.value + 2f) -1f else width.value
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                ) { course -> editorCourse = course; showEditor = true }
+            }
 
         }
     }

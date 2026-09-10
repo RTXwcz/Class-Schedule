@@ -1,8 +1,8 @@
 # Corresponding source and dependency sources
 
 The application source, build scripts, Gradle Wrapper and npm lockfile for
-v1.5.3 are available at https://github.com/RTXwcz/Class-Schedule/tree/v1.5.3
-and in `class-schedule-v1.5.3-source.zip` next to its two ARM APKs.
+v1.5.4 are available at https://github.com/RTXwcz/Class-Schedule/tree/v1.5.4
+and in `class-schedule-v1.5.4-source.zip` next to its two ARM APKs.
 For historical v1.3.0 ARM builds, use that release's ARM source attachment;
 its notes identify the packaging commit separately from the original tag.
 No proprietary signing

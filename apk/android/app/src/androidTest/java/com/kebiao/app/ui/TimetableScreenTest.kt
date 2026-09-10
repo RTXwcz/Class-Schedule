@@ -5,6 +5,8 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -29,13 +31,14 @@ class TimetableScreenTest {
         compose.setContent { MaterialTheme { TimetableScreen(viewModel) } }
         val course = Course("math", "Mathematics", 1, 1, 2, building = "Science", room = "A101")
         compose.runOnIdle { viewModel.addCourse(course) }
-        compose.onNodeWithText("Mathematics").assertIsDisplayed()
+        // The next-course summary may repeat the same course name, so only the first is required.
+        compose.onAllNodesWithText("Mathematics").onFirst().assertIsDisplayed()
         compose.runOnIdle { viewModel.updateCourse(course.copy(name = "Physics", room = "A202")) }
-        compose.onNodeWithText("Mathematics").assertDoesNotExist()
-        compose.onNodeWithText("Physics").assertIsDisplayed()
-        compose.onNodeWithText("Science A202").assertIsDisplayed()
+        compose.onAllNodesWithText("Mathematics").assertCountEquals(0)
+        compose.onAllNodesWithText("Physics").onFirst().assertIsDisplayed()
+        compose.onAllNodesWithText("Science A202").onFirst().assertIsDisplayed()
         compose.runOnIdle { viewModel.deleteCourse(course.id) }
-        compose.onNodeWithText("Physics").assertDoesNotExist()
+        compose.onAllNodesWithText("Physics").assertCountEquals(0)
     }
 
     @Test
@@ -58,8 +61,8 @@ class TimetableScreenTest {
         viewModel.addCourse(Course("a", "Physics", 1, 1, 2))
         viewModel.addCourse(Course("b", "Chemistry", 1, 1, 2))
         compose.setContent { MaterialTheme { TimetableScreen(viewModel) } }
-        compose.onNodeWithText("Physics").assertIsDisplayed()
-        compose.onNodeWithText("Chemistry").assertIsDisplayed()
+        compose.onAllNodesWithText("Physics").onFirst().assertIsDisplayed()
+        compose.onAllNodesWithText("Chemistry").onFirst().assertIsDisplayed()
     }
 
     @Test
@@ -94,6 +97,6 @@ class TimetableScreenTest {
         compose.onNodeWithTag("period-start-13").assertIsDisplayed()
         compose.onNodeWithTag("period-end-13").assertIsDisplayed()
         compose.onNodeWithTag("course-block-late").assertIsDisplayed()
-        compose.onNodeWithText("晚间研讨").assertIsDisplayed()
+        compose.onAllNodesWithText("晚间研讨").onFirst().assertIsDisplayed()
     }
 }
