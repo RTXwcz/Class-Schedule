@@ -79,10 +79,11 @@ class FixedTimetableTest {
         val vm = fixture()
         // A long title on every period keeps the column taller than any test viewport, so the
         // vertical axis is genuinely scrollable instead of depending on the emulator height.
+        // Distinct titles keep the rows from merging into one card, so the column stays scrollable.
         for (period in 1..13) {
             vm.addCourse(Course(
                 if (period == 1) "drag" else "fill-$period",
-                "可滑动的完整课程名称用于验证纵向滚动可以正常发生",
+                "可滑动的完整课程名称用于验证纵向滚动可以正常发生第 $period 段",
                 1,
                 period,
                 period,
@@ -142,13 +143,86 @@ class FixedTimetableTest {
         compose.onNodeWithText("录入", substring = false).assertIsDisplayed()
     }
 
+    @Test fun theOverviewKeepsAllSevenDaysOnScreenEvenWithParallelCourses() {
+        val vm = fixture()
+        // Two lanes on Monday and three on Wednesday: the week needs ten columns in total, and the
+        // overview still has to hold every day.
+        vm.addCourse(Course("p1", "高等数学", 1, 1, 2, building = "理科楼", room = "A301"))
+        vm.addCourse(Course("p2", "大学物理", 1, 1, 2, building = "理科楼", room = "208"))
+        vm.addCourse(Course("p3", "程序设计", 3, 3, 4, building = "实验楼", room = "B402"))
+        vm.addCourse(Course("p4", "大学英语", 3, 3, 4, building = "外语楼", room = "205"))
+        vm.addCourse(Course("p5", "大学体育", 3, 3, 4, building = "体育馆", room = "1号场"))
+        compose.setContent { ScheduleApp(vm) }
+        val grid = compose.onNodeWithTag("timetable-grid").getUnclippedBoundsInRoot()
+        (1..7).forEach { day ->
+            val header = compose.onNodeWithTag("day-header-$day").getUnclippedBoundsInRoot()
+            assertTrue(
+                "day $day ends at ${header.right} outside the grid ${grid.right}",
+                header.right.value <= grid.right.value + 0.5f,
+            )
+        }
+        compose.onNodeWithTag("day-header-7").assertIsDisplayed()
+        screenshot("overview-parallel-week")
+    }
+
+    @Test fun consecutiveRowsOfTheSameLessonBecomeOneCard() {
+        val vm = fixture()
+        vm.addCourse(Course("split-1", "大学英语", 1, 1, 1, building = "外语楼", room = "205"))
+        vm.addCourse(Course("split-2", "大学英语", 1, 2, 2, building = "外语楼", room = "205"))
+        // A missing period in between, a different room and another weekday must all stay apart.
+        vm.addCourse(Course("gap-1", "高等数学", 1, 4, 4, building = "理科楼", room = "A301"))
+        vm.addCourse(Course("gap-2", "高等数学", 1, 6, 6, building = "理科楼", room = "A301"))
+        vm.addCourse(Course("other-1", "大学物理", 1, 8, 8, building = "理科楼", room = "208"))
+        vm.addCourse(Course("other-2", "大学物理", 1, 9, 9, building = "实验楼", room = "B402"))
+        vm.addCourse(Course("weekday", "大学英语", 2, 1, 1, building = "外语楼", room = "205"))
+        compose.setContent { ScheduleApp(vm) }
+
+        compose.onAllNodesWithTag("course-block-split-1").assertCountEquals(1)
+        compose.onAllNodesWithTag("course-block-split-2").assertCountEquals(0)
+        compose.onNodeWithTag("course-block-gap-1").assertExists()
+        compose.onNodeWithTag("course-block-gap-2").assertExists()
+        compose.onNodeWithTag("course-block-other-1").assertExists()
+        compose.onNodeWithTag("course-block-other-2").assertExists()
+        compose.onNodeWithTag("course-block-weekday").assertExists()
+
+        val merged = compose.onNodeWithTag("course-block-split-1").getUnclippedBoundsInRoot()
+        val single = compose.onNodeWithTag("course-block-gap-1").getUnclippedBoundsInRoot()
+        assertTrue(
+            "merged=${merged.bottom - merged.top} single=${single.bottom - single.top}",
+            merged.bottom - merged.top > (single.bottom - single.top) * 1.5f,
+        )
+        screenshot("merged-lesson")
+
+        // Editing the merged card must still address one stored period, never the merged span.
+        compose.onNodeWithTag("course-block-split-1").performClick()
+        compose.onNodeWithText("编辑课程").assertIsDisplayed()
+        compose.onNodeWithText("第 1–1 节", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("取消", substring = false).performClick()
+    }
+
+    @Test fun theNarrowestTierKeepsTheBuildingInsideItsCard() {
+        val vm = fixture()
+        vm.addCourse(Course("bld", "C语言程序设计基础及实验", 1, 1, 2, building = "第三教学楼", room = "A301"))
+        compose.setContent { ScheduleApp(vm) }
+        // The overview is the default and the narrowest tier; the place line has to survive it.
+        val card = compose.onNodeWithTag("course-block-bld").getUnclippedBoundsInRoot()
+        // The same building also shows up in the next-course strip, so scope the query to the card.
+        val place = compose.onNode(
+            hasText("第三教学楼 A301") and hasAnyAncestor(hasTestTag("course-block-bld")),
+            useUnmergedTree = true,
+        ).getUnclippedBoundsInRoot()
+        assertTrue("place top=${place.top} must start inside the card ${card.top}", place.top.value >= card.top.value - 0.5f)
+        assertTrue("place bottom=${place.bottom} must end inside the card ${card.bottom}", place.bottom.value <= card.bottom.value + 0.5f)
+        screenshot("overview-building")
+    }
+
     @Test fun oneDragPansBothAxesAtOnce() {
         val vm = fixture()
         vm.addCourse(Course("diag", "自由平移课程", 1, 1, 1))
         // Long titles on Tuesday make the column taller than the viewport, so both axes have
         // somewhere to travel. The drag tier keeps the week wider than the screen.
         repeat(13) { index ->
-            vm.addCourse(Course("fill-${index + 1}", "长标题用于撑满纵向空间以便验证自由平移是否同时作用于两个方向", 2, index + 1, index + 1))
+            vm.addCourse(Course("fill-${index + 1}", "长标题用于撑满纵向空间以便验证自由平移是否同时作用于两个方向第 ${index + 1} 段", 2, index + 1, index + 1))
         }
         compose.setContent { ScheduleApp(vm) }
         compose.onNodeWithTag("grid-zoom").performClick()

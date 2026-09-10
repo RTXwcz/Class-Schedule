@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -115,16 +116,24 @@ internal enum class TimetableZoom(
 }
 
 /**
- * Width of one day so that seven days, six gaps, the axis gutter and the grid padding fit into
- * [gridWidth] exactly. Floored to a whole pixel to keep the last column from being clipped.
+ * Width of one day column so that the whole week, the six gaps, the axis gutter and the grid
+ * padding fit into [gridWidth] exactly. Floored to a whole pixel to keep the last column from being
+ * clipped. [columns] counts every lane, so a day with overlapping courses shrinks the columns
+ * instead of pushing the last day off screen.
  */
-internal fun overviewColumnWidth(gridWidth: Dp, density: Density): Dp = with(density) {
+internal fun overviewColumnWidth(gridWidth: Dp, density: Density, columns: Int = 7): Dp = with(density) {
     val week = TimetableZoom.WEEK
+    val lanes = columns.coerceAtLeast(1)
     val usable = (gridWidth - GRID_SIDE_PADDING * 2 - week.gutterWidth - week.dayGap * 6f).toPx()
-    (usable.toInt() / 7).coerceAtLeast(24).toDp()
+    (usable.toInt() / lanes).coerceAtLeast(24).toDp()
 }
 
-private data class PlacedCourse(val course: Course, val lane: Int)
+/**
+ * One card on the grid. [display] is the span that gets drawn, which can cover several stored
+ * entries; [editor] stays the untouched entry so editing never writes a merged span back.
+ */
+private data class LessonSpan(val display: Course, val editor: Course)
+private data class PlacedCourse(val lesson: LessonSpan, val lane: Int)
 private data class DayGrid(val date: LocalDate, val courses: List<PlacedCourse>, val laneCount: Int)
 
 /**
@@ -141,6 +150,7 @@ internal fun TimetableGrid(
     scrollRequest: Int,
     zoom: TimetableZoom = TimetableZoom.WEEK,
     columnWidth: Dp = zoom.columnWidth,
+    onDayColumns: (Int) -> Unit = {},
     onPinchZoom: (Dp) -> Unit = {},
     modifier: Modifier = Modifier,
     onCourseClick: (Course) -> Unit,
@@ -175,26 +185,28 @@ internal fun TimetableGrid(
     val grids = remember(monday, days) {
         days.mapIndexed { offset, effective ->
             val laneEnds = mutableListOf<Int>()
-            val placed = effective
-                .sortedWith(compareBy<EffectiveCourse> { it.course.startPeriod }.thenBy { it.course.endPeriod }.thenBy { it.course.id })
-                .map { item ->
-                    val lane = laneEnds.indexOfFirst { end -> end < item.course.startPeriod }
-                        .let { if (it < 0) laneEnds.size else it }
-                    if (lane == laneEnds.size) laneEnds += item.course.endPeriod else laneEnds[lane] = item.course.endPeriod
-                    PlacedCourse(item.course, lane)
-                }
+            val placed = mergeConsecutiveLessons(effective).map { lesson ->
+                val lane = laneEnds.indexOfFirst { end -> end < lesson.display.startPeriod }
+                    .let { if (it < 0) laneEnds.size else it }
+                if (lane == laneEnds.size) laneEnds += lesson.display.endPeriod else laneEnds[lane] = lesson.display.endPeriod
+                PlacedCourse(lesson, lane)
+            }
             DayGrid(monday.plusDays(offset.toLong()), placed, laneEnds.size.coerceAtLeast(1))
         }
     }
+    // The overview needs the real column count, including the extra lanes of overlapping days, to
+    // keep the whole week on screen.
+    val dayColumns = grids.sumOf { it.laneCount }
+    SideEffect { onDayColumns(dayColumns) }
 
     // Grow only the periods that actually hold the content. Empty rows stay at the minimum,
     // and every day shares the same boundaries so parallel courses remain aligned.
     val rowPixels = IntArray(periods.size) { minimumRowPixels }
     grids.flatMap { it.courses }
-        .filter { it.course.endPeriod <= periods.size }
-        .sortedBy { it.course.endPeriod - it.course.startPeriod }
+        .filter { it.lesson.display.endPeriod <= periods.size }
+        .sortedBy { it.lesson.display.endPeriod - it.lesson.display.startPeriod }
         .forEach { placed ->
-            val course = placed.course
+            val course = placed.lesson.display
             val details = courseDetails(course, parityEnabled, compact = zoom == TimetableZoom.WEEK)
             val titleHeight = measurer.measure(course.name, titleStyle, constraints = Constraints(maxWidth = textWidth)).size.height
             val detailsHeight = details.sumOf {
@@ -367,11 +379,11 @@ internal fun TimetableGrid(
                         periods.indices.forEach { index ->
                             HorizontalDivider(Modifier.offset(y = rowOffsets[index]), color = MaterialTheme.colorScheme.outlineVariant)
                         }
-                        grid.courses.filter { it.course.endPeriod <= periods.size }.forEach { placed ->
-                            val course = placed.course
+                        grid.courses.filter { it.lesson.display.endPeriod <= periods.size }.forEach { placed ->
+                            val course = placed.lesson.display
                             val colors = courseColors(course.name)
                             Card(
-                                onClick = { onCourseClick(course) },
+                                onClick = { onCourseClick(placed.lesson.editor) },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = CardDefaults.cardColors(containerColor = colors.first, contentColor = colors.second),
                                 modifier = Modifier
@@ -440,11 +452,55 @@ private class FlingHandle {
 }
 
 /**
+ * Merges entries that describe the same lesson into one card: two rows of the same course, room,
+ * teacher, weeks and parity that touch each other are one block on the grid. The stored entries
+ * are left alone, so the editor still opens a single period and nothing is written back merged.
+ */
+private fun mergeConsecutiveLessons(courses: List<EffectiveCourse>): List<LessonSpan> {
+    val ordered = courses.sortedWith(
+        compareBy<EffectiveCourse> { it.course.startPeriod }
+            .thenBy { it.course.endPeriod }
+            .thenBy { it.course.id },
+    )
+    val merged = mutableListOf<LessonSpan>()
+    ordered.forEach { item ->
+        val previous = merged.lastOrNull()
+        if (previous != null && previous.display.endPeriod + 1 == item.course.startPeriod &&
+            sameLesson(previous.display, item.course)
+        ) {
+            merged[merged.lastIndex] = previous.copy(
+                display = previous.display.copy(endPeriod = item.course.endPeriod),
+            )
+        } else {
+            merged += LessonSpan(display = item.course, editor = item.course)
+        }
+    }
+    return merged
+}
+
+/** Everything except the period range has to match before two entries can become one card. */
+private fun sameLesson(a: Course, b: Course): Boolean =
+    a.name.trim() == b.name.trim() &&
+        a.weekday == b.weekday &&
+        a.building == b.building &&
+        a.room == b.room &&
+        a.locationNote == b.locationNote &&
+        a.teacher == b.teacher &&
+        a.weeks == b.weeks &&
+        a.weekRule == b.weekRule &&
+        a.courseNote == b.courseNote
+
+/**
  * Only real values become lines, so a course without a room does not reserve empty space.
  * [compact] is the overview width, where the card height already shows how many periods it
  * covers and only the parity flag still needs a line of its own.
  */
-private fun courseDetails(course: Course, parityEnabled: Boolean, compact: Boolean = false): List<String> = buildList {
+private fun courseDetails(
+    course: Course,
+    parityEnabled: Boolean,
+    compact: Boolean = false,
+    fitsOnOneLine: (String) -> Boolean = { true },
+): List<String> = buildList {
     val span = course.endPeriod - course.startPeriod + 1
     val parity = if (parityEnabled) when (course.weekRule) {
         WeekRule.ALL -> null
@@ -456,11 +512,20 @@ private fun courseDetails(course: Course, parityEnabled: Boolean, compact: Boole
     } else if (span > 1 || parity != null) {
         add("第${course.startPeriod}–${course.endPeriod}节" + if (parity != null) " · $parity" else "")
     }
-    listOfNotNull(course.building, course.room, course.locationNote)
-        .filter { it.isNotBlank() }
-        .joinToString(" ")
-        .takeIf { it.isNotBlank() }
-        ?.let(::add)
+    val building = course.building?.takeIf { it.isNotBlank() }
+    val room = course.room?.takeIf { it.isNotBlank() }
+    val note = course.locationNote?.takeIf { it.isNotBlank() }
+    val place = listOfNotNull(building, room, note).joinToString(" ").takeIf { it.isNotBlank() }
+    if (place != null) {
+        // In the narrowest column "第三教学楼 A301" would otherwise wrap into "第三教学 / 楼 A301".
+        // Give the building its own line as soon as the whole place no longer fits on one.
+        if (building == null || fitsOnOneLine(place)) {
+            add(place)
+        } else {
+            add(building)
+            listOfNotNull(room, note).joinToString(" ").takeIf { it.isNotBlank() }?.let(::add)
+        }
+    }
     course.teacher?.takeIf { it.isNotBlank() }?.let { add("教师 $it") }
     if (course.weeks.isNotEmpty()) add(WeekSelection.format(course.weeks) + "周")
     course.courseNote?.takeIf { it.isNotBlank() }?.let(::add)
