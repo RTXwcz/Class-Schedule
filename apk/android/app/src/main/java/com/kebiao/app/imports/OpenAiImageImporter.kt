@@ -20,7 +20,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.spec.GCMParameterSpec
 
 class OpenAiImageImporter(private val context: Context) {
-    suspend fun importUri(uri: android.net.Uri, endpoint: String, model: String): List<CourseDraft> = withContext(Dispatchers.IO) {
+    suspend fun importUri(uri: android.net.Uri, endpoint: String, model: String): OpenAiImageContract.ParsedImport = withContext(Dispatchers.IO) {
         val mime = context.contentResolver.getType(uri) ?: error("无法确定图片格式")
         val limit = 10 * 1024 * 1024
         val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
@@ -74,7 +74,7 @@ class OpenAiImageImporter(private val context: Context) {
         endpoint: String = "https://api.openai.com/v1/chat/completions",
         model: String = "gpt-4o-mini",
         mime: String = "image/jpeg",
-    ): List<CourseDraft> = withContext(Dispatchers.IO) {
+    ): OpenAiImageContract.ParsedImport = withContext(Dispatchers.IO) {
         OpenAiImageContract.validateEndpoint(endpoint)
         val url = OpenAiImageContract.normalizeEndpoint(endpoint)
         require(imageBytes.isNotEmpty() && imageBytes.size <= 10 * 1024 * 1024) { "图片大小须在 10 MB 以内" }
@@ -110,7 +110,7 @@ class OpenAiImageImporter(private val context: Context) {
                 }
                 result.toString()
             }
-            OpenAiImageContract.parseResponse(response)
+            OpenAiImageContract.parse(response)
         } finally { connection.disconnect() }
     }
 
@@ -186,3 +186,4 @@ internal fun describeFailure(body: String): String {
     }.getOrNull()
     return "：" + (message ?: body).replace(Regex("\\s+"), " ").trim().take(300)
 }
+

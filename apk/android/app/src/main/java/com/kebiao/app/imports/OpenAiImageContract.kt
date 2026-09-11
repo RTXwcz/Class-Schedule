@@ -3,6 +3,7 @@ package com.kebiao.app.imports
 import com.kebiao.app.domain.model.WeekRule
 import com.kebiao.app.ocr.CourseDraft
 import com.kebiao.app.ocr.DraftField
+import com.kebiao.app.notifications.LessonPeriod
 import kotlinx.serialization.json.*
 import java.net.URI
 
@@ -47,8 +48,16 @@ object OpenAiImageContract {
                     put("role", "user")
                     putJsonArray("content") {
                         addJsonObject {
-                            put("type", "text")
-                            put("text", "识别课表，逐门返回 JSON 数组。字段 name, weekday(1-7), startPeriod, endPeriod, weekRule(ALL/ODD/EVEN), building, room, locationNote, teacher, weeks(周次字符串，如1-16或1,3,5-8), courseNote。每个上课时段分别列出。教学楼、教室、教师分开；其他课程信息保留到courseNote。看不清的字段填 null，不要猜测，不要输出 Markdown。")
+                        put("type", "text")
+                        put(
+                            "text",
+                            "识别课表，返回 JSON 对象 {\"courses\":[...],\"periods\":[...]}。" +
+                                "courses 逐门一个时段：字段 name, weekday(1-7), startPeriod, endPeriod, " +
+                                "weekRule(ALL/ODD/EVEN), building, room, locationNote, teacher, " +
+                                "weeks(周次字符串，如1-16或1,3,5-8), courseNote；教学楼、教室、教师分开。" +
+                                "periods 是图中左侧作息时间轴，每节课一项 {start,end}（形如 08:00），没有就返回空数组。" +
+                                "看不清的字段填 null，不要猜测，不要输出 Markdown。",
+                        )
                         }
                         addJsonObject {
                             put("type", "image_url")
@@ -60,7 +69,10 @@ object OpenAiImageContract {
         }.toString()
     }
 
-    fun parseResponse(response: String): List<CourseDraft> {
+    /** Courses plus the schedule the image prints on its time axis. */
+    data class ParsedImport(val drafts: List<CourseDraft>, val periods: List<LessonPeriod>)
+
+    fun parse(response: String): ParsedImport {
         val head = response.trimStart()
         require(head.startsWith("{") || head.startsWith("[")) {
             "接口返回的不是 JSON，而是在返回网页或纯文本。请确认地址是 API 端点（如 https://服务商/v1），而不是控制台首页。"
@@ -70,10 +82,24 @@ object OpenAiImageContract {
         require(choice["finish_reason"]?.jsonPrimitive?.contentOrNull != "length") { "识别结果被截断，请拆分图片重试" }
         val content = choice["message"]?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
             ?: error("响应缺少课程内容")
-        val json = content.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-        val items = Json.parseToJsonElement(json).jsonArray
+        val payload = Json.parseToJsonElement(content.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
+        val items = when (payload) {
+            is JsonArray -> payload
+            is JsonObject -> payload["courses"]?.jsonArray ?: error("响应缺少课程内容")
+            else -> error("响应缺少课程内容")
+        }
         require(items.size in 1..200) { "未识别到课程，或课程数量超过 200" }
-        return items.map { item ->
+        val periods = (payload as? JsonObject)?.get("periods")?.let { element ->
+            runCatching {
+                element.jsonArray.mapNotNull { item ->
+                    val fields = item.jsonObject
+                    val start = fields["start"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                    val end = fields["end"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                    LessonPeriod(start, end).takeIf { CLOCK.matches(start) && CLOCK.matches(end) }
+                }
+            }.getOrNull().orEmpty()
+        }.orEmpty()
+        val drafts = items.map { item ->
             val obj = item.jsonObject
             fun value(key: String) = obj[key]?.jsonPrimitive?.contentOrNull
             // Vision responses do not expose calibrated field confidence.
@@ -91,5 +117,11 @@ object OpenAiImageContract {
                 courseNote = DraftField(value("courseNote"), 0f),
             )
         }
+        return ParsedImport(drafts, periods)
     }
+
+    /** Kept for callers that only need the courses. */
+    fun parseResponse(response: String): List<CourseDraft> = parse(response).drafts
+
+    private val CLOCK = Regex("^(?:[01]?\\d|2[0-3]):[0-5]\\d$")
 }

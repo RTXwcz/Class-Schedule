@@ -97,6 +97,11 @@ fun McpSettingsSection(settings: AppSettings, update: ((AppSettings) -> AppSetti
             }
             Switch(settings.mcpWriteConfirmation, { required -> update { it.copy(mcpWriteConfirmation = required) } })
         }
+        Text(
+            "局域网服务是明文 HTTP：同一 Wi-Fi 下的设备可能看到 Token。在校园网、咖啡厅等公共网络里建议保持“修改前由我确认”开启，用完及时关闭服务。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
         TextButton(onClick = { troubleshooting = !troubleshooting }) { Text(if (troubleshooting) "收起连接帮助" else "连接不上？查看排查方法") }
         if (troubleshooting) Text("• 确认服务显示“正在监听”，且复制的是 Wi-Fi 地址。\n• 访客 Wi-Fi、AP 隔离或 VPN 可能阻止设备互访。\n• 401 通常表示 Token 不匹配，请重新复制。\n• 手机换网络后需要更新客户端地址。\n• 强行停止应用会断开服务，重新打开并启用即可。", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "收起高级设置" else "高级设置") }

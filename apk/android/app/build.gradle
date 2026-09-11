@@ -8,6 +8,16 @@ def localUiQa = providers.gradleProperty('localUiQa').orNull == 'true'
 if (localUiQa && gradle.startParameter.taskNames.any { !it.toLowerCase().contains('debug') && !it.endsWith('clean') }) {
     throw new GradleException('localUiQa is restricted to explicit debug/clean tasks')
 }
+def signedReleaseTasks = gradle.startParameter.taskNames.any { name ->
+    def lower = name.toLowerCase()
+    lower.contains('assemblerelease') || lower.contains('bundlerelease') || lower.contains('packagerelease')
+}
+if (signedReleaseTasks && !System.getenv('CLASS_SCHEDULE_KEYSTORE') && System.getenv('CLASS_SCHEDULE_ALLOW_UNSIGNED') != '1') {
+    throw new GradleException(
+        'Release builds need the signing environment (tools/build-release.ps1 sets it). ' +
+            'Set CLASS_SCHEDULE_ALLOW_UNSIGNED=1 only for compile checks such as CI.'
+    )
+}
 gradle.taskGraph.whenReady { graph ->
     if (localUiQa && graph.allTasks.any { it.project == project && it.name.toLowerCase().contains('release') }) {
         throw new GradleException('An emulator QA ABI cannot be used for release tasks')
@@ -25,8 +35,8 @@ android {
         applicationId "com.kebiao.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 19
-        versionName "1.6.4"
+        versionCode 20
+        versionName "1.7.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -86,6 +96,8 @@ tasks.register('generateLegalAssets', Sync) {
     from(rootProject.file('../../licenses'))
 }
 android.sourceSets.main.assets.srcDir(legalAssets)
+// Room's exported schemas double as the fixtures for the migration test.
+android.sourceSets.androidTest.assets.srcDir(files("$projectDir/schemas"))
 tasks.named('preBuild').configure { dependsOn('generateLegalAssets') }
 // Lint can inspect generated test stubs; avoid kapt replacing those files mid-analysis.
 tasks.matching { it.name.startsWith('lintAnalyze') }.configureEach {
@@ -141,6 +153,7 @@ dependencies {
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    androidTestImplementation "androidx.room:room-testing:2.7.2"
     androidTestImplementation platform('androidx.compose:compose-bom:2025.08.00')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
 }

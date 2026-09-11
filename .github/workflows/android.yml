@@ -24,3 +24,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: bash gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon
         working-directory: apk/android
+      # Release-only rules (R8, resource shrinking) are not exercised by the debug variant.
+      - run: bash gradlew :app:assembleRelease :app:lintRelease --no-daemon
+        working-directory: apk/android
+        env:
+          CLASS_SCHEDULE_ALLOW_UNSIGNED: "1"

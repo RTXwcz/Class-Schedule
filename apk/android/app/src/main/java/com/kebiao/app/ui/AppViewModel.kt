@@ -281,8 +281,13 @@ class AppViewModel(
                     // The image's own time axis tells how many periods a day has and when each runs.
                     detectedPeriods = parser.parsePeriods(blocks).takeIf { it.size >= 4 }
                     parser.parse(blocks)
-                } else requireNotNull(openAiImporter) { "图片导入尚未初始化" }
-                    .importUri(uri, settings.openAiEndpoint, settings.openAiModel)
+                } else {
+                    val result = requireNotNull(openAiImporter) { "图片导入尚未初始化" }
+                        .importUri(uri, settings.openAiEndpoint, settings.openAiModel)
+                    // Cloud models can report the time axis too; keep the same day schedule feature.
+                    detectedPeriods = result.periods.takeIf { it.size >= 4 }
+                    result.drafts
+                }
                 require(drafts.isNotEmpty()) { "未识别到课程，请选择更清晰的图片" }
                 val reviewedDefaults = if (settings.parityEnabled) drafts else drafts.map { draft ->
                     draft.copy(weekRule = draft.weekRule.copy(

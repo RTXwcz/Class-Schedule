@@ -30,13 +30,15 @@ class McpAuthStore(context: Context) : McpTokenStore {
             val legacy = prefs.getString("token", null)
             if (!legacy.isNullOrBlank()) { save(legacy); legacy } else rotate()
         } else {
-            try {
+            runCatching {
                 val bytes = Base64.getDecoder().decode(encoded)
+                check(bytes.size > 12) { "token ciphertext is truncated" }
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                 cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
                 cipher.doFinal(bytes.copyOfRange(12, bytes.size)).toString(Charsets.UTF_8)
-            } catch (_: javax.crypto.AEADBadTagException) {
-                // Older backups could restore ciphertext without its device-bound key.
+            }.getOrElse {
+                // A restored backup, a truncated blob or a lost keystore key all mean the same thing:
+                // issue a new token instead of failing inside the authorization path.
                 rotate()
             }
         }

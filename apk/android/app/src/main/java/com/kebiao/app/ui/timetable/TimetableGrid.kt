@@ -22,9 +22,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -137,6 +139,7 @@ private data class LessonSpan(
     val display: Course,
     val editor: Course,
     val extras: List<Course> = emptyList(),
+    val extraEditors: List<Course> = emptyList(),
 )
 private data class PlacedCourse(val lesson: LessonSpan, val lane: Int)
 private data class DayGrid(val date: LocalDate, val courses: List<PlacedCourse>, val laneCount: Int)
@@ -246,6 +249,8 @@ internal fun TimetableGrid(
     var positionedDate by rememberSaveable { mutableStateOf<String?>(null) }
     var handledRequest by rememberSaveable { mutableIntStateOf(-1) }
     var previousColumns by remember { mutableStateOf(courseWidth + dayGap) }
+    // One overview column can hold several clashing lessons; the tap has to ask which one to edit.
+    var clashChoice by remember { mutableStateOf<List<Course>?>(null) }
     LaunchedEffect(selectedDate, scrollRequest, courseWidth) {
         if (positionedDate != selectedDate.toString() || handledRequest != scrollRequest) {
             withFrameNanos { }
@@ -418,7 +423,10 @@ internal fun TimetableGrid(
                             val course = placed.lesson.display
                             val colors = courseColors(course.name)
                             Card(
-                                onClick = { onCourseClick(placed.lesson.editor) },
+                                onClick = {
+                                    val choice = listOf(placed.lesson.editor) + placed.lesson.extraEditors
+                                    if (choice.size == 1) onCourseClick(choice.single()) else clashChoice = choice
+                                },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = CardDefaults.cardColors(containerColor = colors.first, contentColor = colors.second),
                                 modifier = Modifier
@@ -451,6 +459,33 @@ internal fun TimetableGrid(
                 }
             }
         }
+    }
+
+    clashChoice?.let { choices ->
+        AlertDialog(
+            onDismissRequest = { clashChoice = null },
+            title = { Text("这一时期有多门课程") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    choices.forEach { course ->
+                        TextButton(
+                            onClick = { clashChoice = null; onCourseClick(course) },
+                            modifier = Modifier.fillMaxWidth().testTag("clash-choice-${course.id}"),
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(course.name, style = MaterialTheme.typography.bodyLarge)
+                                listOfNotNull(course.building, course.room)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" ")
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { clashChoice = null }) { Text("关闭") } },
+        )
     }
 }
 
@@ -548,14 +583,17 @@ private fun collapseOverlappingLessons(lessons: List<LessonSpan>): List<LessonSp
             groups += lesson
         } else {
             groups.removeAll(overlapping)
-            val members = (overlapping.flatMap { listOf(it.display) + it.extras } + lesson.display)
-                .sortedBy { it.startPeriod }
+            // Keep display and editor pairs together: the overview card may show several courses,
+            // and tapping it has to be able to edit each one of them.
+            val members = (overlapping.flatMap { group ->
+                listOf(group.display to group.editor) + group.extras.zip(group.extraEditors)
+            } + (lesson.display to lesson.editor)).sortedBy { it.first.startPeriod }
             val head = members.first()
-            val editor = overlapping.firstOrNull { it.display.id == head.id }?.editor ?: lesson.editor
             groups += LessonSpan(
-                display = head.copy(endPeriod = members.maxOf { it.endPeriod }),
-                editor = editor,
-                extras = members.drop(1),
+                display = head.first.copy(endPeriod = members.maxOf { it.first.endPeriod }),
+                editor = head.second,
+                extras = members.drop(1).map { it.first },
+                extraEditors = members.drop(1).map { it.second },
             )
         }
     }

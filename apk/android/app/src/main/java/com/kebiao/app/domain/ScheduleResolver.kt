@@ -45,8 +45,11 @@ class ScheduleResolver {
             .sortedWith(compareBy<Course> { it.startPeriod }.thenBy { it.endPeriod }.thenBy { it.name })
             .toList()
 
+        var furthestEnd = 0
         return sorted.mapIndexed { index, course ->
-            val conflictsWithPrevious = index > 0 && sorted[index - 1].endPeriod >= course.startPeriod
+            // Chain the overlaps: A(1-10), B(2-3), C(4-5) are all one conflict, not just A and B.
+            val conflictsWithPrevious = course.startPeriod <= furthestEnd
+            furthestEnd = maxOf(furthestEnd, course.endPeriod)
             EffectiveCourse(
                 course = course,
                 date = date,

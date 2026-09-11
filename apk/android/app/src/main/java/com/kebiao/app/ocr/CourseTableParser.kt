@@ -43,7 +43,10 @@ class CourseTableParser {
             period to LessonPeriod(start, end)
         }
         val ordered = periods.sortedBy { it.first }
-        if (ordered.map { it.first } != (1..ordered.size).toList()) return emptyList()
+        // Schools sometimes skip a number (1..12, 14). The app numbers periods by position, so a
+        // strictly increasing axis that starts at 1 is enough; a gap no longer discards the schedule.
+        if (ordered.firstOrNull()?.first != 1) return emptyList()
+        if (ordered.zipWithNext().any { (a, b) -> b.first <= a.first }) return emptyList()
         if (ordered.any { (_, period) -> !isClockOrder(period.start, period.end) }) return emptyList()
         if (ordered.zipWithNext().any { (a, b) -> !isClockOrder(a.second.end, b.second.start) }) return emptyList()
         return ordered.map { it.second }
@@ -268,7 +271,9 @@ class CourseTableParser {
         val trimmed = line.trim()
         if (trimmed.length !in 2..12) return false
         if (Regex("[0-9A-Za-z:：()（）.。\\-—–]").containsMatchIn(trimmed)) return false
-        if (Regex("周|节|课|楼|馆|场|室|区|中心|学院|大学|考试|实验").containsMatchIn(trimmed)) return false
+        if (Regex("周|节|课|校区|中心|学院|大学|考试|实验").containsMatchIn(trimmed)) return false
+        // A name may contain 楼/馆/场/室 (surname 楼, name 馆…); only a real place line is excluded.
+        if (placeLine(trimmed) != null) return false
         // Several teachers are printed as "楼俊超/李梦宇" or "张三、李四".
         return Regex("^[\\p{IsHan}·]+([/、,，][\\p{IsHan}·]+)*$").matches(trimmed)
     }
@@ -280,12 +285,14 @@ class CourseTableParser {
         if (Regex("^\\d{1,2}:\\d{2}").containsMatchIn(trimmed)) return null
         // Notes such as "（东）" are part of the building and are re-attached after the room split.
         val notes = Regex("[（(][^）)]*[）)]").findAll(trimmed).joinToString("") { it.value }
-        val stripped = trimmed.replace(Regex("[（(][^）)]*[）)]"), " ").trim()
-        val tail = Regex("^([\\p{IsHan}]+?)\\s*([A-Za-z]?[0-9][0-9A-Za-z\\-]*)$").find(stripped)
+        val base = trimmed.replace(Regex("[（(][^）)]*[）)]"), "").trim()
+        val tail = Regex("^([\\p{IsHan}]+?)\\s*([A-Za-z]?[0-9][0-9A-Za-z\\-]*)$").find(base)
         if (tail != null && tail.groupValues[1].isNotEmpty()) {
             return (tail.groupValues[1].trim() + notes) to tail.groupValues[2]
         }
-        if (trimmed.length <= 24 && Regex("楼|馆|场|校区|教室|实验室|中心").containsMatchIn(trimmed)) return trimmed to ""
+        // A place name ends with a venue word. Merely containing 楼/馆/场 is not enough: "楼俊超" is
+        // a teacher, and treating it as a building used to steal the teacher line.
+        if (base.length <= 24 && PLACE_SUFFIX.containsMatchIn(base)) return (base + notes) to ""
         return null
     }
 
@@ -331,6 +338,8 @@ class CourseTableParser {
 
     private companion object {
         val CLOCK = Regex("^(?:[01]?\\d|2[0-3]):[0-5]\\d$")
+        /** A building name ends with one of these; "楼俊超" (a surname) must not match. */
+        val PLACE_SUFFIX = Regex("(楼|馆|场|校区|教室|实验室|中心)$")
         const val MIN_PERIODS = 4
     }
 

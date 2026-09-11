@@ -71,6 +71,9 @@ object JsonScheduleCodec {
     private val parser = Json { ignoreUnknownKeys = true }
     private val knownTopLevel = setOf("schemaVersion", "datasetId", "updatedAt", "source", "courses", "exams", "overrides")
 
+    /** Highest backup format this build understands; newer files are refused instead of guessed. */
+    const val SUPPORTED_SCHEMA_VERSION = 1
+
     fun decode(json: String): ScheduleExport {
         val document = try {
             parser.parseToJsonElement(json)
@@ -82,11 +85,15 @@ object JsonScheduleCodec {
         val root = document as? JsonObject
             ?: throw IllegalArgumentException("Schedule JSON must be an object or legacy array")
         require(listOf("courses", "exams", "overrides").any { it in root }) { "JSON 中缺少课程、考试或调休数据" }
+        val version = root.int("schemaVersion") ?: SUPPORTED_SCHEMA_VERSION
+        require(version <= SUPPORTED_SCHEMA_VERSION) {
+            "备份来自更新的版本（schemaVersion $version），请先升级应用再导入"
+        }
         val courses = root["courses"].asArray().mapIndexed { index, item -> requireNotNull(decodeCourse(item)) { "第 ${index + 1} 条课程无效，未导入任何数据" } }
         val exams = root["exams"].asArray().mapIndexed { index, item -> requireNotNull(decodeExam(item)) { "第 ${index + 1} 条考试无效，未导入任何数据" } }
         val overrides = root["overrides"].asArray().mapIndexed { index, item -> requireNotNull(decodeOverride(item)) { "第 ${index + 1} 条调休无效，未导入任何数据" } }
         return ScheduleExport(
-            schemaVersion = root.int("schemaVersion") ?: 1,
+            schemaVersion = version,
             datasetId = root.string("datasetId")?.takeIf(String::isNotBlank) ?: UUID.randomUUID().toString(),
             updatedAt = root.string("updatedAt")?.takeIf(String::isNotBlank) ?: Instant.now().toString(),
             source = root.string("source")?.takeIf(String::isNotBlank) ?: "IMPORT",
@@ -158,10 +165,7 @@ object JsonScheduleCodec {
             createdAtEpochMillis = obj.long("createdAtEpochMillis") ?: 0L,
             updatedAtEpochMillis = obj.long("updatedAtEpochMillis") ?: 0L,
             teacher = obj.string("teacher"),
-            weeks = obj["weeks"].asArray().map { value ->
-                requireNotNull((value as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull)
-                    .also { require(it in 1..60) { "周次须为 1 到 60" } }
-            }.also { require(it.distinct().size == it.size) { "周次不能重复" } },
+            weeks = obj.decodeWeeks(),
             courseNote = obj.string("courseNote"),
         )
     }
@@ -171,6 +175,7 @@ object JsonScheduleCodec {
         val id = obj.string("id")?.takeIf(String::isNotBlank) ?: return null
         val subject = (obj.string("subject") ?: obj.string("name"))?.trim()?.takeIf(String::isNotBlank) ?: return null
         val date = obj.string("date")?.trim()?.takeIf(String::isNotBlank) ?: return null
+        require(runCatching { java.time.LocalDate.parse(date) }.isSuccess) { "考试日期无效：$date" }
         val type = obj.string("type") ?: "EXAM"
         require(type in setOf("EXAM", "EVENT")) { "不支持的日历类型：$type" }
         val location = obj.string("location")?.trim()?.takeIf(String::isNotBlank)
@@ -195,6 +200,7 @@ object JsonScheduleCodec {
         val obj = element as? JsonObject ?: return null
         val date = obj.string("date")?.takeIf(String::isNotBlank) ?: return null
         val weekday = obj.int("replacementWeekday") ?: obj.int("day") ?: return null
+        require(runCatching { java.time.LocalDate.parse(date) }.isSuccess) { "调休日期无效：$date" }
         return weekday.takeIf { it in 1..7 }?.let { ScheduleOverrideRecord(date, it, obj.string("note")) }
     }
 
@@ -263,4 +269,22 @@ object JsonScheduleCodec {
     private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
     private fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull
     private fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?.longOrNull
+
+    /**
+     * Week numbers arrive either as an array (native export) or as the "1-16 / 1,3,5-8" string the
+     * vision contract asks for; both must import.
+     */
+    private fun JsonObject.decodeWeeks(): List<Int> = when (val element = this["weeks"]) {
+        null, is kotlinx.serialization.json.JsonNull -> emptyList()
+        is JsonArray -> element.map { value ->
+            val number = (value as? JsonPrimitive)?.contentOrNull?.trim()?.toIntOrNull()
+            requireNotNull(number) { "周次须为 1 到 60 的数字" }.also { require(it in 1..60) { "周次须为 1 到 60" } }
+        }.also { require(it.distinct().size == it.size) { "周次不能重复" } }
+        else -> {
+            val text = (element as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+            require(text.isNotEmpty()) { "周次格式无效" }
+            runCatching { com.kebiao.app.domain.WeekSelection.parse(text) }
+                .getOrElse { throw IllegalArgumentException("周次格式无效：$text") }
+        }
+    }
 }

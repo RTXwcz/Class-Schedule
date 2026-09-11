@@ -138,6 +138,7 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
                 }
                 TextButton(onClick = { confirmDiscard = true }, enabled = !state.importBusy) { Text("放弃", color = MaterialTheme.colorScheme.error) }
             }
+            state.importStatus?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary) }
             state.errorMessage?.let { Text(it, Modifier.padding(16.dp)) }
             ImportReviewScreen(drafts, saving = state.importBusy, imageUri = state.importImageUri, onChange = viewModel::editImportDrafts,
                 parityEnabled = state.settings.parityEnabled,
@@ -259,3 +260,4 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
         }
     }
 }
+

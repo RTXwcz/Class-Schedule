@@ -24,6 +24,18 @@ class McpServer(
                 finish()
                 return@intercept
             }
+            val contentLength = context.request.header("Content-Length")?.toLongOrNull()
+            if (contentLength != null && contentLength > MAX_REQUEST_BYTES) {
+                context.respondText("Request too large", status = HttpStatusCode.PayloadTooLarge)
+                finish()
+                return@intercept
+            }
+            // A paired agent is trusted, but a leaked token should not be able to pump writes.
+            if (!allowRequest(context.request.local.remoteAddress)) {
+                context.respondText("Too many requests", status = HttpStatusCode.TooManyRequests)
+                finish()
+                return@intercept
+            }
             val authorization = context.request.header("Authorization").orEmpty()
             if (!authorization.startsWith("Bearer ") || !tokens.isValid(authorization.removePrefix("Bearer "))) {
                 context.respondText("Unauthorized", status = HttpStatusCode.Unauthorized)
@@ -43,6 +55,26 @@ class McpServer(
     fun stop() { engine.stop(0, 1_000) }
 
     companion object {
+        /** Tool calls are small; anything bigger is not a legitimate MCP request. */
+        private const val MAX_REQUEST_BYTES = 1L * 1024 * 1024
+        private const val RATE_LIMIT = 60
+        private const val RATE_WINDOW_MILLIS = 10_000L
+        private val recentRequests = java.util.concurrent.ConcurrentHashMap<String, ArrayDeque<Long>>()
+
+        /** Sliding-window limiter per peer address. */
+        internal fun allowRequest(peer: String, now: Long = System.currentTimeMillis()): Boolean {
+            if (recentRequests.size > 64) recentRequests.entries.removeAll { entry -> entry.value.none { now - it <= RATE_WINDOW_MILLIS } }
+            val hits = recentRequests.computeIfAbsent(peer) { ArrayDeque() }
+            synchronized(hits) {
+                while (hits.isNotEmpty() && now - hits.first() > RATE_WINDOW_MILLIS) hits.removeFirst()
+                if (hits.size >= RATE_LIMIT) return false
+                hits.addLast(now)
+                return true
+            }
+        }
+
+        internal fun resetRateLimiter() = recentRequests.clear()
+
         fun isLocalPeer(address: String): Boolean = runCatching {
             if (!address.matches(Regex("[0-9a-fA-F:.%]+"))) return false
             val peer = InetAddress.getByName(address)
