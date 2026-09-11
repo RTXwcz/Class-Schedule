@@ -1,11 +1,53 @@
 package com.kebiao.app.ocr
 
 import com.kebiao.app.domain.model.WeekRule
+import com.kebiao.app.notifications.LessonPeriod
 import kotlin.math.abs
 import kotlin.math.max
 
 class CourseTableParser {
     fun parse(text: String): List<CourseDraft> = parse(listOf(OcrTextBlock(text, 1f, OcrSourceBox(0f, 0f, 0f, 0f))))
+
+    /**
+     * The period schedule the image itself prints: how many periods a day has and what clock times
+     * each one runs between. Returns an empty list when the axis is incomplete, because a partially
+     * read schedule would renumber the user's periods.
+     */
+    fun parsePeriods(blocks: List<OcrTextBlock>): List<LessonPeriod> {
+        val nonempty = blocks.filter { it.text.isNotBlank() }
+        val headers = findHeaders(nonempty)
+
+        if (headers.isEmpty()) return emptyList()
+        val headerBottom = headers.maxOf { it.block.box.bottom }
+        val axisLeft = headers.first().block.box.left
+        val axisBlocks = nonempty.filter { it.box.right < axisLeft && it.box.top > headerBottom && it.confidence >= 0.6f }
+        val numbers = axisBlocks.mapNotNull { block -> axisPeriods(block.text)?.let { it.first to block } }
+            .filter { (period, _) -> period in 1..48 }
+            .sortedBy { it.second.centerY }
+        if (numbers.size < MIN_PERIODS) return emptyList()
+        val clocks = axisBlocks.filter { CLOCK.matches(it.text.trim()) }.sortedBy { it.centerY }
+
+        if (clocks.size < MIN_PERIODS) return emptyList()
+        val schedule = numbers.mapIndexed { index, (period, block) ->
+            val top = if (index == 0) Float.NEGATIVE_INFINITY else (numbers[index - 1].second.centerY + block.centerY) / 2
+            val bottom = if (index == numbers.lastIndex) Float.POSITIVE_INFINITY else (numbers[index + 1].second.centerY + block.centerY) / 2
+            val inside = clocks.filter { it.centerY in top..bottom }
+            period to inside
+        }
+        // Every period needs its own start and end; a half-read row must not shift the rest.
+        if (schedule.any { it.second.size < 2 }) return emptyList()
+
+        val periods = schedule.map { (period, inside) ->
+            val start = inside.first().text.trim()
+            val end = (inside.last().text.trim()).takeIf { inside.size > 1 } ?: start
+            period to LessonPeriod(start, end)
+        }
+        val ordered = periods.sortedBy { it.first }
+        if (ordered.map { it.first } != (1..ordered.size).toList()) return emptyList()
+        if (ordered.any { (_, period) -> !isClockOrder(period.start, period.end) }) return emptyList()
+        if (ordered.zipWithNext().any { (a, b) -> !isClockOrder(a.second.end, b.second.start) }) return emptyList()
+        return ordered.map { it.second }
+    }
 
     fun parse(blocks: List<OcrTextBlock>): List<CourseDraft> {
         val nonempty = blocks.filter { it.text.isNotBlank() }
@@ -194,9 +236,10 @@ class CourseTableParser {
         // the generic week range the cell prints.
         val rule = textRule ?: parity ?: if (weeks != null || Regex("每周|全周").containsMatchIn(details)) WeekRule.ALL else null
         val place = lines.firstNotNullOfOrNull { line -> placeLine(line) }
-        val building = lines.firstNotNullOfOrNull { line ->
+        // The split place wins: it keeps a note such as "（东）" that the generic building regex drops.
+        val building = place?.first?.takeIf { it.isNotBlank() } ?: lines.firstNotNullOfOrNull { line ->
             Regex("([\\p{IsHan}A-Za-z0-9]+(?:教学楼|实验楼|楼|馆|校区))[A-Za-z]?").find(line)?.value
-        } ?: place?.first?.takeIf { it.isNotBlank() }
+        }
         // "东2-204" is one room number: the split place wins over the bare digit group.
         val room = place?.second?.takeIf { it.isNotBlank() } ?: lines.firstNotNullOfOrNull { line ->
             Regex("(?:教室\\s*[:：]?\\s*)?\\b([A-Za-z]?[0-9]{3,4}[A-Za-z]?)\\b").find(line)?.groupValues?.get(1)
@@ -233,12 +276,14 @@ class CourseTableParser {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) return null
         if (Regex("^\\d{1,2}:\\d{2}").containsMatchIn(trimmed)) return null
-        val tail = Regex("^([\\p{IsHan}]+?)\\s*([A-Za-z]?[0-9][0-9A-Za-z\\-]*)$").find(trimmed)
-        if (tail != null && tail.groupValues[1].isNotEmpty()) return tail.groupValues[1] to tail.groupValues[2]
-        if (trimmed.length <= 24 && Regex("楼|馆|场|校区|教室|实验室|中心").containsMatchIn(trimmed)) {
-            val name = trimmed.replace(Regex("[（(][^）)]*[）)]"), "").trim()
-            if (name.isNotEmpty()) return name to ""
+        // Notes such as "（东）" are part of the building and are re-attached after the room split.
+        val notes = Regex("[（(][^）)]*[）)]").findAll(trimmed).joinToString("") { it.value }
+        val stripped = trimmed.replace(Regex("[（(][^）)]*[）)]"), " ").trim()
+        val tail = Regex("^([\\p{IsHan}]+?)\\s*([A-Za-z]?[0-9][0-9A-Za-z\\-]*)$").find(stripped)
+        if (tail != null && tail.groupValues[1].isNotEmpty()) {
+            return (tail.groupValues[1].trim() + notes) to tail.groupValues[2]
         }
+        if (trimmed.length <= 24 && Regex("楼|馆|场|校区|教室|实验室|中心").containsMatchIn(trimmed)) return trimmed to ""
         return null
     }
 
@@ -281,6 +326,23 @@ class CourseTableParser {
 
     private data class Header(val day: Int, val block: OcrTextBlock)
     private data class Row(val start: Int, val end: Int, val block: OcrTextBlock)
+
+    private companion object {
+        val CLOCK = Regex("^(?:[01]?\\d|2[0-3]):[0-5]\\d$")
+        const val MIN_PERIODS = 4
+    }
+
+    /** True when both strings are clock times and the second is not before the first. */
+    private fun isClockOrder(first: String, second: String): Boolean {
+        fun minutes(value: String): Int? = CLOCK.matchEntire(value.trim())?.let {
+            val parts = value.trim().split(":")
+            parts[0].toInt() * 60 + parts[1].toInt()
+        }
+        val a = minutes(first) ?: return false
+        val b = minutes(second) ?: return false
+        return b >= a
+    }
+
     private val OcrTextBlock.centerX get() = (box.left + box.right) / 2
     private val OcrTextBlock.centerY get() = (box.top + box.bottom) / 2
     private val OcrTextBlock.height get() = (box.bottom - box.top).coerceAtLeast(1f)
@@ -443,3 +505,4 @@ class CourseTableParser {
         return (start to end).takeIf { start in 1..48 && end in start..48 }
     }
 }
+

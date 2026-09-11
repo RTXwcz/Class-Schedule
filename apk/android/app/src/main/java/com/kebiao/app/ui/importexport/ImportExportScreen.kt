@@ -142,6 +142,8 @@ fun ImportExportScreen(viewModel: AppViewModel, padding: PaddingValues = Padding
             ImportReviewScreen(drafts, saving = state.importBusy, imageUri = state.importImageUri, onChange = viewModel::editImportDrafts,
                 parityEnabled = state.settings.parityEnabled,
                 periodCount = state.settings.periods.size,
+                detectedPeriods = state.importPeriods,
+                onApplyPeriods = viewModel::applyImportedPeriods,
                 removed = state.removedImportDraft, onRemove = viewModel::removeImportDraft, onUndoRemove = viewModel::undoImportRemoval,
                 onConfirm = viewModel::saveImportDrafts)
         }

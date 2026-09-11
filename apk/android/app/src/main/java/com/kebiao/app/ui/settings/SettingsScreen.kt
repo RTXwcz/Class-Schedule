@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -34,6 +35,7 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
     var endpoint by remember(state.settings.openAiEndpoint) { mutableStateOf(state.settings.openAiEndpoint) }
     var model by remember(state.settings.openAiModel) { mutableStateOf(state.settings.openAiModel) }
     var configStatus by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { ProductHeader("按你的节奏", "把课表调成适合自己的样子", "偏好设置") }
         item {
@@ -111,17 +113,38 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
                 SettingsGroup("使用 OpenAI 兼容接口", "选择云端识别时，图片会发送到你配置的 API 服务。") {
                     OutlinedTextField(endpoint, { endpoint = it }, label = { Text("API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     OutlinedTextField(model, { model = it }, label = { Text("模型名称") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Text(
+                        "地址填服务根地址即可，保存时会自动补 /chat/completions。模型必须支持图片输入：" +
+                            "DeepSeek 用 deepseek-flash；OpenAI 用 gpt-4o-mini；通义千问（DashScope 兼容模式）用 qwen-vl-max。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     OutlinedTextField(openAiKey, { openAiKey = it }, label = { Text(if (viewModel.hasOpenAiKey()) "已保存密钥 · 输入可替换" else "API Key") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Button(onClick = {
                         configStatus = runCatching {
                             OpenAiImageContract.validateEndpoint(endpoint.trim())
                             require(model.isNotBlank()) { "请填写模型名称" }
+                            val normalized = OpenAiImageContract.normalizeEndpoint(endpoint.trim())
                             viewModel.saveOpenAiKey(openAiKey)
-                            viewModel.updateSettingsAndThen({ it.copy(openAiEndpoint = endpoint.trim(), openAiModel = model.trim()) }) { configStatus = "配置已保存" }
+                            endpoint = normalized
+                            viewModel.updateSettingsAndThen({ it.copy(openAiEndpoint = normalized, openAiModel = model.trim()) }) {
+                                configStatus = "配置已保存，请求地址 $normalized"
+                            }
                             openAiKey = ""
                             "正在保存…"
                         }.getOrElse { it.message ?: "保存失败" }
                     }) { Text("保存配置") }
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                configStatus = "正在测试连接…"
+                                configStatus = runCatching {
+                                    viewModel.testOpenAiConnection(endpoint.trim(), model.trim())
+                                }.getOrElse { it.message ?: "测试失败" }
+                            }
+                        },
+                        enabled = endpoint.isNotBlank() && model.isNotBlank(),
+                    ) { Text("测试连接") }
                     configStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
             }
@@ -152,3 +175,4 @@ private fun OverrideEditorDialog(initial: ScheduleOverride?, onDismiss: () -> Un
     }, confirmButton = { Button(onClick = { onSave(ScheduleOverride(date, weekday, note.trim().ifBlank { null })) }, enabled = !weekdayMoving) { Text("保存") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }
+

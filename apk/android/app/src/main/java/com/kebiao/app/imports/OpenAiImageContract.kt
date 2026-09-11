@@ -14,11 +14,34 @@ object OpenAiImageContract {
         }
     }
 
+    /**
+     * Accepts what people actually paste: `https://api.deepseek.com`, `.../v1`, or the full
+     * `.../v1/chat/completions`. The chat path is appended when it is missing, and OpenAI keeps its
+     * `/v1` prefix.
+     */
+    fun normalizeEndpoint(endpoint: String): String {
+        val trimmed = endpoint.trim()
+        validateEndpoint(trimmed)
+        val uri = URI(trimmed)
+        val path = uri.path.orEmpty().trimEnd('/')
+        val chatPath = when {
+            path.endsWith("/chat/completions") -> path
+            path.endsWith("/v1") -> "$path/chat/completions"
+            // OpenAI and most gateways (DeepSeek, New API relays, DashScope compatible mode) serve the
+            // API under /v1; a bare host therefore gets /v1/chat/completions.
+            path.isEmpty() -> "/v1/chat/completions"
+            else -> "$path/v1/chat/completions"
+        }
+        return URI(uri.scheme, null, uri.host, uri.port, chatPath, null, null).toString()
+    }
+
     fun request(model: String, base64: String, mime: String): String {
         require(model.isNotBlank()) { "请填写模型名称" }
         require(mime in setOf("image/jpeg", "image/png", "image/webp")) { "请选择 JPG、PNG 或 WebP 图片" }
         return buildJsonObject {
             put("model", model)
+            // Some gateways stream by default; the app reads a single JSON answer.
+            put("stream", false)
             putJsonArray("messages") {
                 addJsonObject {
                     put("role", "user")
@@ -38,6 +61,10 @@ object OpenAiImageContract {
     }
 
     fun parseResponse(response: String): List<CourseDraft> {
+        val head = response.trimStart()
+        require(head.startsWith("{") || head.startsWith("[")) {
+            "接口返回的不是 JSON，而是在返回网页或纯文本。请确认地址是 API 端点（如 https://服务商/v1），而不是控制台首页。"
+        }
         val choice = Json.parseToJsonElement(response).jsonObject["choices"]?.jsonArray?.firstOrNull()?.jsonObject
             ?: error("响应缺少课程内容")
         require(choice["finish_reason"]?.jsonPrimitive?.contentOrNull != "length") { "识别结果被截断，请拆分图片重试" }

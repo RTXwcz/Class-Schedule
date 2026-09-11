@@ -22,8 +22,9 @@ class ExamCalendarScreenTest {
 
     @Test fun calendarFiltersExamsAndEventsSeparately() {
         val viewModel = AppViewModel()
-        viewModel.addExam(ScheduleExam("exam", "期末数学", "2026-09-10"))
-        viewModel.addExam(ScheduleExam("event", "读书会", "2026-09-10", type = "EVENT", note = "带阅读笔记"))
+        val date = java.time.LocalDate.now().toString()
+        viewModel.addExam(ScheduleExam("exam", "期末数学", date))
+        viewModel.addExam(ScheduleExam("event", "读书会", date, type = "EVENT", note = "带阅读笔记"))
         compose.setContent { MaterialTheme { ExamCalendarScreen(viewModel) } }
         compose.onNodeWithText("期末数学").assertIsDisplayed()
         compose.onNodeWithText("读书会").assertIsDisplayed()
@@ -61,3 +62,4 @@ class ExamCalendarScreenTest {
         }
     }
 }
+

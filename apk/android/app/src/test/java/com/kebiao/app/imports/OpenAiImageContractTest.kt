@@ -39,6 +39,24 @@ class OpenAiImageContractTest {
         }
     }
 
+    @Test fun completesTheChatPathFromWhateverTheUserPasted() {
+        // DeepSeek and friends accept the bare host; OpenAI needs its /v1 prefix.
+        assertEquals("https://api.deepseek.com/v1/chat/completions", OpenAiImageContract.normalizeEndpoint("https://api.deepseek.com"))
+        assertEquals("https://api.deepseek.com/v1/chat/completions", OpenAiImageContract.normalizeEndpoint("https://api.deepseek.com/"))
+        assertEquals("https://api.deepseek.com/v1/chat/completions", OpenAiImageContract.normalizeEndpoint("https://api.deepseek.com/v1"))
+        assertEquals("https://api.deepseek.com/chat/completions", OpenAiImageContract.normalizeEndpoint("https://api.deepseek.com/chat/completions"))
+        assertEquals("https://api.openai.com/v1/chat/completions", OpenAiImageContract.normalizeEndpoint("https://api.openai.com"))
+        assertEquals("https://api.openai.com/v1/chat/completions", OpenAiImageContract.normalizeEndpoint("https://api.openai.com/v1"))
+        assertEquals("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", OpenAiImageContract.normalizeEndpoint("https://dashscope.aliyuncs.com/compatible-mode/v1"))
+    }
+
+    @Test fun providerErrorMessageReachesTheUser() {
+        val body = """{"error":{"message":"Model Not Exist","type":"invalid_request_error"}}"""
+        assertEquals("：Model Not Exist", describeFailure(body))
+        assertEquals("：识别服务没有返回内容", describeFailure("识别服务没有返回内容"))
+        assertEquals("", describeFailure(""))
+    }
+
     @Test fun unknownWeekRuleCannotSilentlyBecomeWeekly() {
         val draft = OpenAiImageContract.parseResponse(response("""[{"name":"数学","weekday":1,"startPeriod":1,"endPeriod":2,"weekRule":"UNKNOWN"}]""")).single()
         assertNull(draft.weekRule.value)
@@ -54,3 +72,4 @@ class OpenAiImageContractTest {
         }
     }.toString()
 }
+

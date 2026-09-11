@@ -54,6 +54,7 @@ data class AppUiState(
     val selectedDate: LocalDate = LocalDate.now(),
     val errorMessage: String? = null,
     val importDrafts: List<CourseDraft>? = null,
+    val importPeriods: List<com.kebiao.app.notifications.LessonPeriod>? = null,
     val removedImportDraft: Pair<Int, CourseDraft>? = null,
     val importBusy: Boolean = false,
     val importStatus: String? = null,
@@ -262,17 +263,24 @@ class AppViewModel(
 
     fun saveOpenAiKey(key: String) { if (key.isNotBlank()) openAiImporter?.saveApiKey(key.trim()) }
     fun hasOpenAiKey(): Boolean = openAiImporter?.hasApiKey() == true
+    suspend fun testOpenAiConnection(endpoint: String, model: String): String =
+        requireNotNull(openAiImporter) { "图片导入尚未初始化" }.testConnection(endpoint, model)
 
     fun recognizeImage(uri: android.net.Uri, local: Boolean = false) {
         if (uiState.value.importBusy || uiState.value.importDrafts != null) return
         val settings = uiState.value.settings
         updateState { copy(importBusy = true, importDrafts = null, removedImportDraft = null, importImageUri = uri, importSource = if (local) "OCR" else "OPENAI",
-            importStatus = "正在识别", errorMessage = null) }
+            importStatus = "正在识别", errorMessage = null, importPeriods = null) }
         viewModelScope.launch {
             try {
+                var detectedPeriods: List<com.kebiao.app.notifications.LessonPeriod>? = null
                 val drafts = if (local) {
                     require(settings.useLocalOcr) { "请先选择本地 OCR 模型" }
-                    CourseTableParser().parse(requireNotNull(recognizeLocal)(uri, modelId(settings.localOcrModel)))
+                    val blocks = requireNotNull(recognizeLocal)(uri, modelId(settings.localOcrModel))
+                    val parser = CourseTableParser()
+                    // The image's own time axis tells how many periods a day has and when each runs.
+                    detectedPeriods = parser.parsePeriods(blocks).takeIf { it.size >= 4 }
+                    parser.parse(blocks)
                 } else requireNotNull(openAiImporter) { "图片导入尚未初始化" }
                     .importUri(uri, settings.openAiEndpoint, settings.openAiModel)
                 require(drafts.isNotEmpty()) { "未识别到课程，请选择更清晰的图片" }
@@ -280,12 +288,19 @@ class AppViewModel(
                     draft.copy(weekRule = draft.weekRule.copy(
                         value = draft.weekRule.value ?: com.kebiao.app.domain.model.WeekRule.ALL, confirmed = true))
                 }
-                updateState { copy(importDrafts = reviewedDefaults, importStatus = null) }
+                updateState { copy(importDrafts = reviewedDefaults, importPeriods = detectedPeriods, importStatus = null) }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
                 updateState { copy(errorMessage = error.message ?: "图片识别失败", importStatus = null) }
             } finally { updateState { copy(importBusy = false) } }
         }
+    }
+
+    /** Writes the schedule read from the image into 设置 → 每日作息. */
+    fun applyImportedPeriods() {
+        val periods = uiState.value.importPeriods ?: return
+        if (periods.size < 2) return
+        updateSettingsAndThen({ it.copy(periods = periods) }) { }
     }
 
     fun downloadLocalModel(id: OcrModelManager.ModelId = modelId(uiState.value.settings.localOcrModel)) {

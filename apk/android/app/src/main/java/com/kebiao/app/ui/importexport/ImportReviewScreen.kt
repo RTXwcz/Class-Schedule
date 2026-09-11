@@ -43,6 +43,8 @@ fun ImportReviewScreen(
     imageUri: android.net.Uri? = null,
     parityEnabled: Boolean = true,
     periodCount: Int = 12,
+    detectedPeriods: List<com.kebiao.app.notifications.LessonPeriod>? = null,
+    onApplyPeriods: () -> Unit = {},
     removed: Pair<Int, CourseDraft>? = null,
     onRemove: (String) -> Unit,
     onUndoRemove: () -> Unit,
@@ -89,6 +91,21 @@ fun ImportReviewScreen(
             }
             if (shown.isEmpty()) item(key = "empty") {
                 Text(if (drafts.isEmpty()) { if (removed != null) "已移除全部课程，可撤销刚才的移除。" else "没有待应用课程。" } else "没有待补充课程，可以直接应用。", Modifier.padding(vertical = 20.dp))
+            }
+            detectedPeriods?.takeIf { it.size >= 2 }?.let { periods ->
+                item(key = "periods") {
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("识别到 ${periods.size} 节作息", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "第 1 节 ${periods.first().start}–${periods.first().end}，第 ${periods.size} 节 ${periods.last().start}–${periods.last().end}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text("图片里的作息时间可以覆盖「设置 → 每日作息」，课程卡片的提醒与小组件都会跟着更新。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = onApplyPeriods, enabled = !saving, modifier = Modifier.testTag("apply-periods")) { Text("应用为每日作息") }
+                        }
+                    }
+                }
             }
             itemsIndexed(shown, key = { _, draft -> draft.reviewId }) { _, draft ->
                 val index = drafts.indexOfFirst { it.reviewId == draft.reviewId }

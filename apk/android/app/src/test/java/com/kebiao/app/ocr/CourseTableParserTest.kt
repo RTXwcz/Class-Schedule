@@ -226,6 +226,40 @@ class CourseTableParserTest {
         assertEquals("2-101", draft.room.value)
         assertEquals("1-8", draft.weeks.value)
     }
+
+    @Test fun keepsParenthesesInPlaceNames() {
+        val field = parser.parse("身体素质课\n星期五 第3-4节\n紫金港田径场（东）").single()
+        assertEquals("紫金港田径场（东）", field.building.value)
+        assertNull(field.room.value)
+
+        val split = parser.parse("体育\n星期五 第1-2节\n体育馆（东）A301").single()
+        assertEquals("体育馆（东）", split.building.value)
+        assertEquals("A301", split.room.value)
+    }
+
+    @Test fun readsTheDailyPeriodScheduleFromTheTimeAxis() {
+        val headers = listOf("星期一" to 300f, "星期二" to 640f, "星期三" to 960f)
+            .map { (text, left) -> OcrTextBlock(text, 0.99f, OcrSourceBox(left, 0f, left + 80f, 28f)) }
+        fun clock(minutes: Int) = "%02d:%02d".format(minutes / 60, minutes % 60)
+        val blocks = mutableListOf<OcrTextBlock>()
+        var minutes = 8 * 60
+        repeat(13) { index ->
+            val top = 180f + index * 100f
+            blocks += OcrTextBlock("${index + 1}", 1f, OcrSourceBox(60f, top, 90f, top + 20f))
+            blocks += OcrTextBlock(clock(minutes), 1f, OcrSourceBox(110f, top, 190f, top + 20f))
+            blocks += OcrTextBlock(clock(minutes + 45), 1f, OcrSourceBox(110f, top + 30f, 190f, top + 50f))
+            minutes += 50
+        }
+        val periods = CourseTableParser().parsePeriods((headers + blocks).shuffled(kotlin.random.Random(5)))
+        assertEquals(13, periods.size)
+        assertEquals("08:00", periods.first().start)
+        assertEquals("08:45", periods.first().end)
+        assertEquals("18:00", periods.last().start)
+        assertEquals("18:45", periods.last().end)
+
+        // A broken axis must not renumber anything.
+        assertTrue(CourseTableParser().parsePeriods(headers + blocks.filterNot { it.text == "09:35" }).isEmpty())
+    }
     private fun headers(): List<OcrTextBlock> = listOf("一", "二", "三", "四", "五", "六", "日")
         .mapIndexed { i, day -> block("星期$day", 110f + i * 100, 20f) }
 
@@ -283,6 +317,9 @@ class CourseTableParserTest {
     private fun block(text: String, left: Float, top: Float, width: Float = 80f) =
         OcrTextBlock(text, 0.96f, OcrSourceBox(left, top, left + width, top + 20f))
 }
+
+
+
 
 
 

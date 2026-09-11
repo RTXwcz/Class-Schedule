@@ -35,6 +35,13 @@ class LocalImageDiagnosticTest {
                     } }))
                     put("drafts", JsonArray(CourseTableParser().parse(blocks).map { draft -> buildJsonObject {
                         put("name", draft.name.value); put("day", draft.weekday.value); put("start", draft.startPeriod.value); put("end", draft.endPeriod.value)
+                        put("rule", draft.weekRule.value?.name); put("weeks", draft.weeks.value)
+                        put("teacher", draft.teacher.value); put("building", draft.building.value)
+                        put("room", draft.room.value); put("note", draft.courseNote.value)
+                        put("place", draft.locationNote.value)
+                    } }))
+                    put("periods", JsonArray(CourseTableParser().parsePeriods(blocks).map { period -> buildJsonObject {
+                        put("start", period.start); put("end", period.end)
                     } }))
                 }
                 File(context.getExternalFilesDir(null), "ocr-${id.wireName}.json").writeText(data.toString())
