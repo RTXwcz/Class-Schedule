@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
 
 class JsonScheduleCodecTest {
     @Test
@@ -52,7 +53,7 @@ class JsonScheduleCodecTest {
     @Test
     fun encodesSharedSchemaAndRoundTripsMetadata() {
         val input = ScheduleExport(
-            schemaVersion = 2,
+            schemaVersion = JsonScheduleCodec.SUPPORTED_SCHEMA_VERSION,
             datasetId = "dataset-42",
             updatedAt = "2026-09-06T12:00:00Z",
             source = "MANUAL",
@@ -107,4 +108,20 @@ class JsonScheduleCodecTest {
         assertEquals("工科楼", export.courses.single().building)
         assertEquals("A101", export.courses.single().room)
     }
+
+    @Test
+    fun refusesABackupFromANewerSchema() {
+        val json = JsonScheduleCodec.encode(ScheduleExport(schemaVersion = JsonScheduleCodec.SUPPORTED_SCHEMA_VERSION + 1))
+        val error = assertFailsWith<IllegalArgumentException> { JsonScheduleCodec.decode(json) }
+        assertTrue(error.message.orEmpty().contains("升级应用"))
+    }
+
+    @Test
+    fun acceptsTheVisionWeekStringForm() {
+        val json = """{"schemaVersion":1,"courses":[{"id":"c","name":"数学","weekday":1,"startPeriod":1,"endPeriod":2,"weekRule":"ALL","weeks":"1-8,10"}]}"""
+        assertEquals(listOf(1, 2, 3, 4, 5, 6, 7, 8, 10), JsonScheduleCodec.decode(json).courses.single().weeks)
+    }
 }
+
+
+

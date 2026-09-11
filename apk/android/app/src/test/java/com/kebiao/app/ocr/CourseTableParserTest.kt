@@ -262,6 +262,31 @@ class CourseTableParserTest {
         // A broken axis must not renumber anything.
         assertTrue(CourseTableParser().parsePeriods(headers + blocks.filterNot { it.text == "09:35" }).isEmpty())
     }
+
+    @Test fun wrappedTitleKeepsTeacherAndPlaceApart() {
+        // Mirrors a real screenshot: the title wraps, the teacher's surname is 楼 (which also means
+        // "building"), and the place carries a parenthetical note.
+        val cell = OcrSourceBox(513f, 665f, 835f, 855f)
+        fun line(text: String, top: Float) = OcrTextBlock(text, 0.96f, OcrSourceBox(520f, top, 820f, top + 22f), cell)
+        val blocks = listOf(
+            line("习近平新时代中国特色社会主", 683f),
+            line("义思想概论", 712f),
+            line("秋冬第1-8周1节/周", 737f),
+            line("楼俊超/李梦宇", 764f),
+            line("紫金港东2-101", 790f),
+            line("2027年01月10日(14:00-16:00)", 818f),
+        )
+        val axes = (1..13).map { period ->
+            OcrTextBlock("$period", 1f, OcrSourceBox(60f, 180f + period * 100f, 90f, 200f + period * 100f))
+        }
+        val headers = listOf("星期一" to 300f, "星期二" to 640f, "星期三" to 960f)
+            .map { (text, left) -> OcrTextBlock(text, 0.99f, OcrSourceBox(left, 0f, left + 80f, 28f)) }
+        val draft = parser.parse(headers + axes + blocks).single()
+        assertEquals("习近平新时代中国特色社会主义思想概论", draft.name.value)
+        assertEquals("楼俊超/李梦宇", draft.teacher.value)
+        assertEquals("紫金港东", draft.building.value)
+        assertEquals("2-101", draft.room.value)
+    }
     private fun headers(): List<OcrTextBlock> = listOf("一", "二", "三", "四", "五", "六", "日")
         .mapIndexed { i, day -> block("星期$day", 110f + i * 100, 20f) }
 
@@ -319,6 +344,7 @@ class CourseTableParserTest {
     private fun block(text: String, left: Float, top: Float, width: Float = 80f) =
         OcrTextBlock(text, 0.96f, OcrSourceBox(left, top, left + width, top + 20f))
 }
+
 
 
 

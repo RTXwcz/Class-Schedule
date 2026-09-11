@@ -3,6 +3,7 @@ package com.kebiao.app.ui
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performSemanticsAction
@@ -102,7 +103,8 @@ class EntryFlowTest {
         }
         compose.onNodeWithText("课表", substring = false).performClick()
         compose.onNodeWithTag("course-block-${vm.uiState.value.courses.single { it.name == "高等数学" }.id}").performScrollTo()
-        compose.onNodeWithText("高等数学").assertIsDisplayed()
+        // The next-course strip can repeat the same name, so the first match is enough.
+        compose.onAllNodesWithText("高等数学").onFirst().assertIsDisplayed()
         screenshot("whole-week")
         compose.onNodeWithTag("timetable-toolbar").assertIsDisplayed()
     }
@@ -122,3 +124,5 @@ class EntryFlowTest {
     }
 
 }
+
+

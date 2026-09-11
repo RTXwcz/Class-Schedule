@@ -70,6 +70,19 @@ class FixedTimetableTest {
         compose.onNodeWithText("编辑课程").assertIsDisplayed()
     }
 
+
+    @Test fun tappingAClashCardAsksWhichCourseToEdit() {
+        val vm = fixture()
+        vm.addCourse(Course("c1", "游泳（初级）", 2, 1, 2, building = "体育馆", room = "游泳池"))
+        vm.addCourse(Course("c2", "羽毛球（初级）", 2, 1, 2, building = "体育馆", room = "2号场"))
+        compose.setContent { ScheduleApp(vm) }
+        compose.onNodeWithTag("course-block-c1").performClick()
+        compose.onNodeWithText("这一时期有多门课程").assertIsDisplayed()
+        compose.onNodeWithTag("clash-choice-c2").performClick()
+        // The picked course opens in the editor instead of the first one of the clash.
+        compose.onNodeWithText("编辑课程").assertIsDisplayed()
+        compose.onNodeWithText("取消", substring = false).performClick()
+    }
     private fun fixture() = AppViewModel().apply {
         selectDate(LocalDate.of(2026, 9, 7))
         updateSettings { it.copy(theme = "dark", colorPalette = "purple", periods = PeriodSchedule.defaults + LessonPeriod("21:40", "22:30")) }
@@ -388,3 +401,4 @@ class FixedTimetableTest {
         bitmap.recycle()
     }
 }
+
