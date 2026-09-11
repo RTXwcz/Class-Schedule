@@ -46,17 +46,19 @@ class ImportApplyStateTest {
     }
 
     @Test
-    fun invalidBatchExplainsCourseAndPreservesAllDraftsWithoutPartialApply() {
+    fun invalidCourseIsExplainedAndKeptWhileValidOnesApply() {
         val vm = AppViewModel()
-        val drafts = listOf(draft(), draft().copy(weekday = DraftField(null, 0f)))
+        val drafts = listOf(draft(), draft().copy(name = DraftField("缺星期课程", .7f), weekday = DraftField(null, 0f)))
         vm.editImportDrafts(drafts)
 
         vm.saveImportDrafts(drafts)
+        dispatcher.scheduler.runCurrent()
 
+        // The readable course is applied; the broken one stays in the review with its reason.
         assertFalse(vm.uiState.value.importBusy)
         assertEquals(drafts, vm.uiState.value.importDrafts)
         assertTrue(vm.uiState.value.courses.isEmpty())
-        assertTrue(vm.uiState.value.errorMessage.orEmpty().startsWith("第 2 门课程："))
+        assertTrue(vm.uiState.value.errorMessage.orEmpty().contains("第 2 门课程："))
         assertTrue(vm.uiState.value.errorMessage.orEmpty().contains("星期"))
     }
 
@@ -107,3 +109,4 @@ class ImportApplyStateTest {
         room = DraftField(null, 0f), locationNote = DraftField(null, 0f),
     )
 }
+

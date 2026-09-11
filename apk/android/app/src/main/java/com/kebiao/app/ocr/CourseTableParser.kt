@@ -224,7 +224,9 @@ class CourseTableParser {
             firstRow == null -> null
             firstRow.end > firstRow.start -> firstRow.end
             lastRow != null && (lastRow.end > firstRow.start || blocks.first().cellBox != null) -> lastRow.end
-            else -> null
+            // The course certainly occupies its first period even when the grid cannot tell how far
+            // it runs; leaving it empty used to block the whole import. Marked as low confidence.
+            else -> firstRow.end
         }
         val geometryConfidence = if (blocks.first().cellBox != null || (firstRow != null && firstRow.end > firstRow.start)) 0.85f else 0.55f
         val textRule = when {

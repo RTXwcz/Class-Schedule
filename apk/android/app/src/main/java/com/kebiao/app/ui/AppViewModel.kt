@@ -370,16 +370,30 @@ class AppViewModel(
         val invalid = drafts.withIndex().firstNotNullOfOrNull { (index, draft) ->
             ImportValidation.validate(draft, state.settings.periods.size).firstOrNull()?.let { index to it }
         }
-        if (invalid != null) {
-            updateState { copy(errorMessage = "第 ${invalid.first + 1} 门课程：${invalid.second.message}") }
+        // One unreadable course must not throw away the rest of a screenshot: the valid ones are
+        // applied and the rest stay in the review list with the reason.
+        val periodCount = state.settings.periods.size
+        val valid = drafts.filter { ImportValidation.validate(it, periodCount).isEmpty() }
+        val kept = drafts.filterNot { ImportValidation.validate(it, periodCount).isEmpty() }
+        val beyondPeriods = state.importPeriods?.size?.takeIf { it > periodCount }
+        fun invalidMessage() = invalid?.let { (index, issue) ->
+            "第 ${index + 1} 门课程：${issue.message}" + when {
+                beyondPeriods != null && issue.field == "endPeriod" ->
+                    "。可先点上方“应用为每日作息”（识别到 $beyondPeriods 节）再应用识别结果"
+                else -> ""
+            }
+        } ?: "没有可应用的课程"
+        if (valid.isEmpty()) {
+            updateState { copy(errorMessage = invalidMessage()) }
             return
         }
         val source = state.importSource
-        updateState { copy(importBusy = true, errorMessage = null) }
+        val keptMessage = kept.takeIf { it.isNotEmpty() }?.let { invalidMessage() }
+        updateState { copy(importBusy = true, errorMessage = keptMessage) }
         viewModelScope.launch {
             try {
                 val now = System.currentTimeMillis()
-                val courses = drafts.map { draft ->
+                val courses = valid.map { draft ->
                     ScheduleCourse(
                         id = newCourseId(), name = draft.name.value.trim(), weekday = requireNotNull(draft.weekday.value),
                         startPeriod = requireNotNull(draft.startPeriod.value), endPeriod = requireNotNull(draft.endPeriod.value),
@@ -392,10 +406,19 @@ class AppViewModel(
                     )
                 }
                 requireNotNull(repository) { "数据库尚未初始化" }.appendCourses(courses, source = source)
-                updateState { copy(importDrafts = null, removedImportDraft = null, importImageUri = null, importStatus = "已追加 ${courses.size} 门课程") }
+                updateState {
+                    copy(
+                        importDrafts = kept.takeIf { it.isNotEmpty() },
+                        removedImportDraft = null,
+                        importImageUri = if (kept.isEmpty()) null else importImageUri,
+                        importStatus = "已追加 ${courses.size} 门课程" +
+                            if (kept.isEmpty()) "" else "，${kept.size} 门待补充",
+                        errorMessage = keptMessage,
+                    )
+                }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
-                updateState { copy(errorMessage = error.message ?: "保存失败") }
+                updateState { copy(errorMessage = listOfNotNull(keptMessage, error.message ?: "保存失败").joinToString("；")) }
             } finally { updateState { copy(importBusy = false) } }
         }
     }

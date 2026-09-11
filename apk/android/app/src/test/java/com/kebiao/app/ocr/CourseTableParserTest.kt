@@ -110,7 +110,9 @@ class CourseTableParserTest {
         assertEquals("实验楼", database.building.value)
         val os = drafts.single { it.name.value == "操作系统" }
         assertEquals(3, os.startPeriod.value)
-        assertNull(os.endPeriod.value)
+        // Unknown span: the first period is certain, the end stays low confidence.
+        assertEquals(3, os.endPeriod.value)
+        assertTrue(os.endPeriod.confidence < 0.8f)
     }
 
     @Test
@@ -317,6 +319,7 @@ class CourseTableParserTest {
     private fun block(text: String, left: Float, top: Float, width: Float = 80f) =
         OcrTextBlock(text, 0.96f, OcrSourceBox(left, top, left + width, top + 20f))
 }
+
 
 
 
