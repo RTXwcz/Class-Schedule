@@ -6,14 +6,14 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 [下载应用](https://github.com/RTXwcz/Class-Schedule/releases/latest) · [使用指南](docs/USAGE.md) · [问题反馈](https://github.com/RTXwcz/Class-Schedule/issues) · [GPL-3.0](LICENSE)
 
-**v1.7.0** 对抗式审查后的加固版：导入反馈、冲突课程选择编辑、云端作息识别、MCP 限流与明文网络提示、备份版本守卫、release 构建签名守卫，并新增 Room 迁移等回归测试。[查看效果与验证](docs/product/1.7.0/VERIFICATION.md)
+**v1.7.1** 收敛识别与显示：`微积分（甲）I` 这类“标题 + 末尾短编号”不再拆成两门课，课表卡片只显示科目、教学楼、教室、教师，备注只保留真正额外的信息。[查看效果与验证](docs/product/1.7.1/VERIFICATION.md)
 
 ![全览档每天一列](docs/product/1.6.1/overview-clash-column.png)
 
 ## 课表，按你的节奏
 
 - **可选配色**：在设置中选择松林绿或鸢尾紫，各自支持跟随系统、浅色和深色；小组件同步配色。
-- **一眼看到下一节课**：首页展示时间和地点；课表默认全览七天一屏，也可切到更宽的档位自由拖动，一次滑动同时浏览日期与节次，并支持双指捏合缩放，星期与时间刻度固定保留。
+- **一眼看到下一节课**：首页展示时间和地点；课表默认全览七天一屏，也可切到更宽的档位自由拖动，一次滑动同时浏览日期与节次，并支持双指捏合缩放，星期与时间刻度固定保留。卡片只显示科目、教学楼、教室、教师，非每周课程附单双周标记。
 - **自定义每天的作息**：设置 1–48 节和各节起止时间。连上多节的课程显示为一张连续卡片。
 - **自然地选择日期和时间**：学期、调休、考试、日程和作息使用滚轮选择，自动处理月份天数与闰年。
 - **规则随学校安排**：支持指定周次、可选单双周，以及某个日期改上另一星期课程的整天调休。
@@ -37,8 +37,8 @@ Android 原生课表应用，支持自定义作息、连堂课程、桌面小组
 
 | 安装包 | 选择建议 |
 | --- | --- |
-| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.7.0/class-schedule-v1.7.0-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
-| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.7.0/class-schedule-v1.7.0-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
+| [arm64-v8a / ARMv8](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.7.1/class-schedule-v1.7.1-arm64-v8a.apk) | 推荐，适用于大多数现代 Android 手机的 64 位系统 |
+| [armeabi-v7a / ARMv7](https://github.com/RTXwcz/Class-Schedule/releases/download/v1.7.1/class-schedule-v1.7.1-armeabi-v7a.apk) | 适用于 32 位 ARM Android 系统 |
 
 当前 APK 大小约 **45.15 MiB（ARM64）/ 32.59 MiB（ARMv7）**。模型、课表数据、缓存和系统优化文件另计，不同设备统计会有差异。
 

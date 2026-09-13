@@ -122,6 +122,11 @@ class CourseTableParser {
             val sameCell = last?.cellBox == null || block.cellBox == null || last.cellBox == block.cellBox
             val continues = when {
                 previous == null || last == null -> false
+                // "微积分（甲）" + "I" is one title: the suffix landed in the next detected cell.
+                isTitleSuffixFragment(block.text) && close && !groupHasDetails(previous) -> true
+                // One detected cell holds one course: once the cell already produced details, the
+                // remaining lines of that cell belong to it (a remark was otherwise a stray course).
+                block.cellBox != null && block.cellBox == groupCell && close && groupHasDetails(previous) -> true
                 isCourseDetail(block, previous, next) -> close && (sameCell || groupCell != null)
                 continuesTitle(last, block) -> sameCell
                 // The export repeats one session once per period, so the identical title in the next
@@ -175,6 +180,17 @@ class CourseTableParser {
                     Regex("(?:任课教师|授课教师|教师|老师)").containsMatchIn(line) || looksLikeTeacher(line)
                 }
         }
+
+    /**
+     * A course title is often printed with a trailing marker that OCR puts in its own block
+     * ("微积分（甲）" + "I", "大学英语Ⅲ" split as "大学英语" + "Ⅲ"). Such a fragment belongs to the
+     * title that is still being read, never to a course of its own.
+     */
+    private fun isTitleSuffixFragment(text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() || trimmed.length > 3) return false
+        return Regex("^[A-Za-z0-9ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ()（）甲乙丙丁]+$").matches(trimmed)
+    }
 
     private fun sameCourseTitle(group: List<OcrTextBlock>, block: OcrTextBlock): Boolean {
         val title = group.firstOrNull()?.text?.trim().orEmpty()
@@ -262,7 +278,11 @@ class CourseTableParser {
             locationNote = DraftField(locationNote, if (locationNote == null) 0f else confidence, box),
             teacher = DraftField(teacher, if (teacher == null) 0f else confidence, box),
             weeks = DraftField(weeks, if (weeks == null) 0f else confidence, box),
-            courseNote = DraftField(meaningfulNote(details), confidence, box),
+            courseNote = DraftField(
+                meaningfulNote(details, name, teacher, building, room),
+                confidence,
+                box,
+            ),
         )
     }
 
@@ -296,13 +316,46 @@ class CourseTableParser {
         return null
     }
 
-    /** Session stamps and per-week counts are table metadata; they never become course notes. */
-    private fun meaningfulNote(details: String): String? {
+    /**
+     * Only genuinely extra information stays. Anything already mapped to a field - the week range,
+     * the parity flag, the teacher, the place, the session stamp, the repeated title - is dropped so
+     * a course card never repeats itself.
+     */
+    private fun meaningfulNote(
+        details: String,
+        title: String,
+        teacher: String?,
+        building: String?,
+        room: String?,
+    ): String? {
+        val normalizedTitle = title.replace(" ", "")
         val kept = details.lines().filter { line ->
             val trimmed = line.trim()
-            trimmed.isNotEmpty() && !sessionStamp(trimmed)
+            when {
+                trimmed.isEmpty() -> false
+                sessionStamp(trimmed) -> false
+                trimmed.contains("周") -> false
+                scheduleOnlyLine(trimmed) -> false
+                placeLine(trimmed) != null -> false
+                building != null && building.isNotBlank() && trimmed.contains(building) -> false
+                room != null && room.isNotBlank() && trimmed.contains(room) -> false
+                teacher != null && teacher.isNotBlank() &&
+                    (trimmed == teacher || looksLikeTeacher(trimmed) || trimmed.contains(teacher)) -> false
+                normalizedTitle.isNotBlank() && normalizedTitle.contains(trimmed.replace(" ", "")) -> false
+                else -> true
+            }
         }
         return kept.joinToString("\n").takeIf { it.isNotBlank() }
+    }
+
+    /** A line that only repeats the weekday and period already taken from the axis. */
+    private fun scheduleOnlyLine(text: String): Boolean {
+        val stripped = text
+            .replace(Regex("(?:星期|周|礼拜)\\s*[一二三四五六日天1-7]"), "")
+            .replace(Regex("第?\\d{1,2}\\s*(?:[-~～至到—–]\\s*\\d{1,2})?\\s*节"), "")
+            .replace(Regex("(?:单周|双周|每周|全部周次|全周)"), "")
+            .replace(Regex("[\\s,，、·|/;；:：]+"), "")
+        return stripped.isEmpty()
     }
 
     private fun normalizeTitle(text: String): String {

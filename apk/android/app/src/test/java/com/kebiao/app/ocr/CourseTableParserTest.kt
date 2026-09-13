@@ -82,8 +82,7 @@ class CourseTableParserTest {
         assertEquals("C203", maths.room.value)
         assertEquals("张老师", maths.teacher.value)
         assertEquals("1-16", maths.weeks.value)
-        assertTrue(maths.courseNote.value!!.contains("张老师"))
-        assertTrue(maths.courseNote.value!!.contains("1-16周"))
+        assertNull(maths.courseNote.value)
         val english = drafts.single { it.name.value == "大学英语" }
         assertEquals(3, english.weekday.value)
         assertEquals(3, english.startPeriod.value)
@@ -129,7 +128,8 @@ class CourseTableParserTest {
         assertEquals(0f, draft.startPeriod.confidence)
         assertEquals(WeekRule.EVEN, draft.weekRule.value)
         assertEquals("3-8,10-16", draft.weeks.value)
-        assertTrue(draft.courseNote.value!!.contains("10-16周"))
+        // Week ranges, teachers and places are mapped to fields, so the note stays empty.
+        assertNull(draft.courseNote.value)
         assertEquals("301", draft.room.value)
     }
 
@@ -175,7 +175,7 @@ class CourseTableParserTest {
         assertEquals("张三", draft.teacher.value)
         assertEquals("1,3,5-8", draft.weeks.value)
         assertEquals(WeekRule.ALL, draft.weekRule.value)
-        assertTrue(draft.courseNote.value!!.contains("周次：1,3,5-8"))
+        assertNull(draft.courseNote.value)
         assertNull(draft.locationNote.value)
     }
 
@@ -287,6 +287,52 @@ class CourseTableParserTest {
         assertEquals("紫金港东", draft.building.value)
         assertEquals("2-101", draft.room.value)
     }
+
+    @Test fun splitsNothingWhenATitleEndsWithALatinSuffix() {
+        // "微积分（甲）I" used to arrive as one block plus a stray "I" block in the next cell.
+        val first = OcrSourceBox(513f, 358f, 674f, 665f)
+        val second = OcrSourceBox(674f, 358f, 835f, 665f)
+        val blocks = listOf(
+            OcrTextBlock("微积分（甲）", 0.96f, OcrSourceBox(520f, 449f, 640f, 472f), first),
+            OcrTextBlock("I", 0.9f, OcrSourceBox(690f, 452f, 700f, 470f), second),
+            OcrTextBlock("秋冬第1-8周3节/周", 0.95f, OcrSourceBox(520f, 477f, 690f, 500f), first),
+            OcrTextBlock("童雯雯", 0.95f, OcrSourceBox(520f, 502f, 580f, 524f), first),
+            OcrTextBlock("紫金港东2-204", 0.95f, OcrSourceBox(520f, 525f, 640f, 548f), first),
+        )
+        val axes = (1..13).map { period ->
+            OcrTextBlock("$period", 1f, OcrSourceBox(60f, 180f + period * 100f, 90f, 200f + period * 100f))
+        }
+        val headers = listOf("星期一" to 300f, "星期二" to 400f, "星期三" to 960f)
+            .map { (text, left) -> OcrTextBlock(text, 0.99f, OcrSourceBox(left, 0f, left + 80f, 28f)) }
+        val drafts = parser.parse(headers + axes + blocks)
+        val draft = drafts.single()
+        assertEquals("微积分（甲）I", draft.name.value)
+        assertEquals("童雯雯", draft.teacher.value)
+        assertEquals("紫金港东", draft.building.value)
+        assertEquals("2-204", draft.room.value)
+        assertNull(draft.courseNote.value)
+    }
+
+    @Test fun dropsDetailLinesFromTheNoteButKeepsExtraRemarks() {
+        val cell = OcrSourceBox(100f, 80f, 200f, 240f)
+        fun line(text: String, top: Float) = OcrTextBlock(text, 0.96f, OcrSourceBox(110f, top, 190f, top + 22f), cell)
+        val draft = parser.parse(
+            headers() + (1..12).map { period -> block("第${period}节", 10f, 80f + period * 80, 80f) } + listOf(
+                line("高等数学", 100f),
+                line("秋冬第1-8周3节/周", 130f),
+                line("张老师", 160f),
+                line("理科楼 C203", 190f),
+                line("需自备实验服", 220f),
+            ),
+        ).single()
+        assertEquals("高等数学", draft.name.value)
+        assertEquals("1-8", draft.weeks.value)
+        assertEquals("张老师", draft.teacher.value)
+        assertEquals("理科楼", draft.building.value)
+        assertEquals("C203", draft.room.value)
+        // Only the line that maps to no field survives.
+        assertEquals("需自备实验服", draft.courseNote.value)
+    }
     private fun headers(): List<OcrTextBlock> = listOf("一", "二", "三", "四", "五", "六", "日")
         .mapIndexed { i, day -> block("星期$day", 110f + i * 100, 20f) }
 
@@ -344,6 +390,9 @@ class CourseTableParserTest {
     private fun block(text: String, left: Float, top: Float, width: Float = 80f) =
         OcrTextBlock(text, 0.96f, OcrSourceBox(left, top, left + width, top + 20f))
 }
+
+
+
 
 
 

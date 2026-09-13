@@ -83,9 +83,35 @@ class FixedTimetableTest {
         compose.onNodeWithText("编辑课程").assertIsDisplayed()
         compose.onNodeWithText("取消", substring = false).performClick()
     }
+
+    @Test fun cardsShowOnlyCoursePlaceTeacherAndHideWeekListsAndNotes() {
+        val vm = fixture()
+        vm.addCourse(Course("info", "高等数学", 1, 1, 2, building = "理科楼", room = "A301", teacher = "张老师",
+            weeks = listOf(1, 2, 3, 4, 5, 6, 7, 8), courseNote = "秋冬第1-8周3节/周\n张老师\n理科楼 A301"))
+        compose.setContent { ScheduleApp(vm) }
+        // Scope every lookup to the card itself so a name that also appears in the next-lesson
+        // banner cannot stand in for what the grid card actually renders.
+        fun onCard(text: String) = compose.onNode(
+            hasText(text) and hasAnyAncestor(hasTestTag("course-block-info")),
+            useUnmergedTree = true,
+        )
+        onCard("高等数学").assertIsDisplayed()
+        onCard("理科楼 A301").assertIsDisplayed()
+        onCard("教师 张老师").assertIsDisplayed()
+        // Week ranges and course notes stay in the editor and the course list, not on the grid.
+        compose.onAllNodesWithText("1-8周").assertCountEquals(0)
+        compose.onAllNodesWithText("秋冬第1-8周3节/周", substring = true).assertCountEquals(0)
+    }
     private fun fixture() = AppViewModel().apply {
         selectDate(LocalDate.of(2026, 9, 7))
-        updateSettings { it.copy(theme = "dark", colorPalette = "purple", periods = PeriodSchedule.defaults + LessonPeriod("21:40", "22:30")) }
+        // The semester starts on the selected Monday so a course limited to weeks 1-8 really is
+        // part of the displayed week instead of being filtered out as an inactive record.
+        updateSettings { it.copy(
+            theme = "dark",
+            colorPalette = "purple",
+            semesterStartDate = "2026-09-07",
+            periods = PeriodSchedule.defaults + LessonPeriod("21:40", "22:30"),
+        ) }
     }
 
     @Test fun fingerSwipesMoveEachAxisWithoutChangingCourseWidth() {
@@ -401,4 +427,5 @@ class FixedTimetableTest {
         bitmap.recycle()
     }
 }
+
 

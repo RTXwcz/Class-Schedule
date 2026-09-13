@@ -114,8 +114,7 @@ fun SettingsScreen(viewModel: AppViewModel, padding: PaddingValues = PaddingValu
                     OutlinedTextField(endpoint, { endpoint = it }, label = { Text("API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     OutlinedTextField(model, { model = it }, label = { Text("模型名称") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Text(
-                        "地址填服务根地址即可，保存时会自动补 /chat/completions。模型必须支持图片输入：" +
-                            "DeepSeek 用 deepseek-flash；OpenAI 用 gpt-4o-mini；通义千问（DashScope 兼容模式）用 qwen-vl-max。",
+                        "地址填服务根地址即可，保存时会自动补 /chat/completions。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -601,9 +601,10 @@ private fun collapseOverlappingLessons(lessons: List<LessonSpan>): List<LessonSp
 }
 
 /**
- * Only real values become lines, so a course without a room does not reserve empty space.
- * [compact] is the overview width, where the card height already shows how many periods it
- * covers and only the parity flag still needs a line of its own.
+ * The card shows the four things a student reads at a glance: course, place, room, teacher - plus a
+ * two-character parity marker when the course is not every-week. Week ranges and notes are stored but
+ * deliberately not repeated on the grid; they live in the editor and the course list.
+ * Only real values become lines, so a missing field never reserves empty space.
  */
 private fun courseDetails(
     course: Course,
@@ -611,17 +612,12 @@ private fun courseDetails(
     compact: Boolean = false,
     fitsOnOneLine: (String) -> Boolean = { true },
 ): List<String> = buildList {
-    val span = course.endPeriod - course.startPeriod + 1
     val parity = if (parityEnabled) when (course.weekRule) {
         WeekRule.ALL -> null
         WeekRule.ODD -> "单周"
         WeekRule.EVEN -> "双周"
     } else null
-    if (compact) {
-        parity?.let(::add)
-    } else if (span > 1 || parity != null) {
-        add("第${course.startPeriod}–${course.endPeriod}节" + if (parity != null) " · $parity" else "")
-    }
+    parity?.let(::add)
     val building = course.building?.takeIf { it.isNotBlank() }
     val room = course.room?.takeIf { it.isNotBlank() }
     val note = course.locationNote?.takeIf { it.isNotBlank() }
@@ -637,6 +633,4 @@ private fun courseDetails(
         }
     }
     course.teacher?.takeIf { it.isNotBlank() }?.let { add("教师 $it") }
-    if (course.weeks.isNotEmpty()) add(WeekSelection.format(course.weeks) + "周")
-    course.courseNote?.takeIf { it.isNotBlank() }?.let(::add)
 }
